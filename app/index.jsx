@@ -19,7 +19,36 @@ const FORMATIONS=[
 
 const makeTeam=id=>({id,name:"",shortName:"",color:"#3B82F6",players:[],formation:"2-2-1"});
 const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,injured:false,benched:false,wide:false,altPosition:null});
-const makeFixture=()=>({id:String(Date.now()+Math.random()),homeId:null,awayId:null,date:"",homeScore:null,awayScore:null,played:false,playerStats:[]});
+const makeFixture=()=>({id:String(Date.now()+Math.random()),homeId:null,awayId:null,date:"",homeScore:null,awayScore:null,played:false,playerStats:[],matchWeek:null});
+
+function generateSeason(namedTeams){
+  const ids=namedTeams.map(t=>t.id);
+  const n=ids.length;
+  if(n<2)return[];
+  const list=n%2===0?[...ids]:[...ids,'bye'];
+  const m=list.length;
+  const fixed=list[0];
+  const rot=list.slice(1);
+  const fixtures=[];
+  for(let r=0;r<m-1;r++){
+    const matchWeek=r+1;
+    const rotated=[...rot.slice(r),...rot.slice(0,r)];
+    const pairs=[[fixed,rotated[0]]];
+    for(let i=1;i<m/2;i++)pairs.push([rotated[i],rotated[m-1-i]]);
+    pairs.forEach(([home,away],pi)=>{
+      if(home==='bye'||away==='bye')return;
+      const swap=(r+pi)%2===1;
+      fixtures.push({...makeFixture(),homeId:swap?away:home,awayId:swap?home:away,matchWeek});
+    });
+  }
+  return fixtures;
+}
+
+function currentMatchWeek(fixtures){
+  const weeks=[...new Set(fixtures.map(f=>f.matchWeek).filter(w=>w!=null))].sort((a,b)=>a-b);
+  for(const w of weeks){if(fixtures.filter(f=>f.matchWeek===w).some(f=>!f.played))return w;}
+  return null;
+}
 
 async function loadState(){try{const r=await fetch('/api/state');if(!r.ok)return null;return r.json();}catch{return null;}}
 async function syncTeams(teams){try{await fetch('/api/teams',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(teams)});}catch(e){console.error('sync teams:',e);}}
@@ -186,8 +215,9 @@ function PredLineup({team,fixtures,side="left"}){
 function FixturesTab({teams,fixtures}){
   const[filter,setFilter]=useState("all");
   const[expandedId,setExpandedId]=useState(null);
+  const currentMW=useMemo(()=>currentMatchWeek(fixtures),[fixtures]);
   const shown=fixtures.filter(f=>filter==="all"?true:filter==="played"?f.played:!f.played);
-  const grouped=shown.reduce((acc,f)=>{const k=f.date||"TBC";if(!acc[k])acc[k]=[];acc[k].push(f);return acc;},{});
+  const grouped=shown.reduce((acc,f)=>{const k=f.matchWeek!=null?`__mw__${f.matchWeek}`:f.date||"TBC";if(!acc[k])acc[k]=[];acc[k].push(f);return acc;},{});
   if(fixtures.length===0)return<Empty icon="📅" msg="No fixtures yet." hint="Go to Manage → Fixtures to add some."/>;
   return(
     <div>
@@ -196,9 +226,9 @@ function FixturesTab({teams,fixtures}){
           <button key={f} onClick={()=>setFilter(f)} style={{background:filter===f?C.accent:C.card,color:filter===f?C.white:C.sub,border:"none",borderRadius:6,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",textTransform:"capitalize"}}>{f}</button>
         ))}
       </div>
-      {Object.entries(grouped).sort(([a],[b])=>a.localeCompare(b)).map(([date,matches])=>(
-        <div key={date} style={{marginBottom:22}}>
-          <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:C.muted,textTransform:"uppercase",marginBottom:10}}>{fmtDate(date)}</div>
+      {Object.entries(grouped).sort(([a],[b])=>{const am=a.startsWith("__mw__"),bm=b.startsWith("__mw__");if(am&&bm)return parseInt(a.slice(6))-parseInt(b.slice(6));if(am)return-1;if(bm)return 1;return a.localeCompare(b);}).map(([key,matches])=>(
+        <div key={key} style={{marginBottom:22}}>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:C.muted,textTransform:"uppercase",marginBottom:10}}>{key.startsWith("__mw__")?`Match Week ${key.slice(6)}`:fmtDate(key)}</div>
           {matches.map(f=>{
             const h=teams.find(t=>t.id===f.homeId),a=teams.find(t=>t.id===f.awayId);
             if(!h||!a)return null;
@@ -218,7 +248,7 @@ function FixturesTab({teams,fixtures}){
                     <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:C.text,letterSpacing:.5}}>{a.name}</span>
                   </div>
                 </div>
-                {expanded&&!f.played&&(
+                {expanded&&!f.played&&(f.matchWeek==null||f.matchWeek===currentMW)&&(
                   <div style={{borderTop:`1px solid ${C.border}`,padding:"14px 16px",background:C.surface}}>
                     <div style={{fontSize:10,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Predicted Lineups</div>
                     <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
@@ -490,7 +520,9 @@ function SquadsTab({teams,setTeams}){
 }
 
 function OddsTab({teams,fixtures}){
-  const upcoming=fixtures.filter(f=>!f.played&&f.homeId&&f.awayId);
+  const hasMW=fixtures.some(f=>f.matchWeek!=null);
+  const currentMW=hasMW?currentMatchWeek(fixtures):null;
+  const upcoming=fixtures.filter(f=>!f.played&&f.homeId&&f.awayId&&(!hasMW||f.matchWeek===currentMW));
   if(upcoming.length===0)return<Empty icon="🎲" msg="No upcoming fixtures." hint="Add fixtures in Manage → Fixtures."/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -554,7 +586,7 @@ function OddsTab({teams,fixtures}){
   );
 }
 
-function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport}){
+function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport,onToast}){
   const[view,setView]=useState("teams");
   const[editTeam,setEditTeam]=useState(null);
   const[editFix,setEditFix]=useState(null);
@@ -568,6 +600,15 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport}){
   const addFix=()=>{setEditFix({...makeFixture()});};
   const saveFix=f=>{setFixtures(fs=>{const ex=fs.some(x=>x.id===f.id);return ex?fs.map(x=>x.id===f.id?f:x):[...fs,f];});syncFixture(f);setEditFix(null);};
   const delFix=id=>{setFixtures(fs=>fs.filter(f=>f.id!==id));deleteFixture(id);setEditFix(null);};
+  const genSeason=async()=>{
+    if(named.length<2){onToast("Need at least 2 named teams");return;}
+    if(fixtures.length>0&&!window.confirm(`Replace ${fixtures.length} existing fixture(s) with a generated season?`))return;
+    await Promise.all(fixtures.map(f=>deleteFixture(f.id)));
+    const newFix=generateSeason(named);
+    setFixtures(newFix);
+    await Promise.all(newFix.map(f=>syncFixture(f)));
+    onToast(`⚡ ${newFix.length} fixtures generated across 11 match weeks!`);
+  };
   const initFixStats=(f,teams)=>{
     const hTeam=teams.find(t=>t.id===f.homeId),aTeam=teams.find(t=>t.id===f.awayId);
     const allP=[...(hTeam?.players||[]).map(p=>({...p,teamId:hTeam.id})),...(aTeam?.players||[]).map(p=>({...p,teamId:aTeam.id}))];
@@ -641,7 +682,10 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport}){
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <SLabel>All Fixtures</SLabel>
-            <Btn onClick={addFix} small>+ Add Fixture</Btn>
+            <div style={{display:"flex",gap:6}}>
+              <Btn onClick={genSeason} small variant="success">⚡ Generate Season</Btn>
+              <Btn onClick={addFix} small>+ Add Fixture</Btn>
+            </div>
           </div>
           {fixtures.length===0&&<div style={{color:C.muted,fontSize:13}}>No fixtures yet.</div>}
           {fixtures.map(f=>{
@@ -824,7 +868,7 @@ function App(){
         {tab==="ratings" &&<RatingsTab teams={teams}/>}
         {tab==="squads"  &&<SquadsTab teams={teams} setTeams={setTeams}/>}
         {tab==="odds"    &&<OddsTab teams={teams} fixtures={fixtures}/>}
-        {tab==="manage"  &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} onExport={handleExport} onImport={handleImport}/>}
+        {tab==="manage"  &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
       </div>
     </div>
   );
