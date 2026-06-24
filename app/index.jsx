@@ -18,7 +18,7 @@ const FORMATIONS=[
 ];
 
 const makeTeam=id=>({id,name:"",shortName:"",color:"#3B82F6",players:[],formation:"2-2-1"});
-const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,injured:false,benched:false});
+const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,injured:false,benched:false,wide:false,altPosition:null});
 const makeFixture=()=>({id:String(Date.now()+Math.random()),homeId:null,awayId:null,date:"",homeScore:null,awayScore:null,played:false,playerStats:[]});
 
 async function loadState(){try{const r=await fetch('/api/state');if(!r.ok)return null;return r.json();}catch{return null;}}
@@ -59,12 +59,19 @@ function playerFormScore(playerId,fixtures){
   return(rN>0?rSum/rN:5)+contrib*0.5;
 }
 
+function arrangeWide(arr){
+  if(arr.length!==3)return arr;
+  const w=arr.filter(p=>p.wide),c=arr.filter(p=>!p.wide);
+  if(w.length>=2)return[w[0],...c.slice(0,1),w[1]];
+  return arr;
+}
+
 function predictedLineup(team,fixtures){
   const formation=FORMATIONS.find(f=>f.id===team.formation)||FORMATIONS[0];
   const available=team.players.filter(p=>!p.injured&&!p.benched);
   const gk=available.find(p=>p.position==="GK");
   const scored=pos=>available.filter(p=>p.position===pos).map(p=>({...p,formScore:playerFormScore(p.id,fixtures)})).sort((a,b)=>b.formScore-a.formScore);
-  return{gk:gk||null,defs:scored("DEF").slice(0,formation.def),mdfs:scored("MDF").slice(0,formation.mdf),fwds:scored("FWD").slice(0,formation.fwd),formation};
+  return{gk:gk||null,defs:arrangeWide(scored("DEF").slice(0,formation.def)),mdfs:scored("MDF").slice(0,formation.mdf),fwds:arrangeWide(scored("FWD").slice(0,formation.fwd)),formation};
 }
 
 function predictMatch(home,away){
@@ -160,7 +167,7 @@ function PredLineup({team,fixtures,side="left"}){
         <div key={ri} style={{display:"flex",justifyContent:side==="right"?"flex-end":"flex-start",gap:4,marginBottom:4,flexWrap:"wrap"}}>
           {row.map(p=>(
             <div key={p.id} style={{background:posColor(p.position)+"22",border:`1px solid ${posColor(p.position)}44`,borderRadius:5,padding:"2px 6px",textAlign:"center"}}>
-              <div style={{fontSize:9,color:posColor(p.position),fontWeight:700}}>{p.position}</div>
+              <div style={{fontSize:9,color:posColor(p.position),fontWeight:700}}>{p.wide?"W-":""}{p.position}{p.altPosition?`/${p.altPosition}`:""}</div>
               <div style={{fontSize:10,color:C.text,fontWeight:600,whiteSpace:"nowrap",maxWidth:60,overflow:"hidden",textOverflow:"ellipsis"}}>{p.name||"?"}</div>
             </div>
           ))}
@@ -449,7 +456,9 @@ function SquadsTab({teams,setTeams}){
               </div>
               {posPlayers.map(p=>{
                 const active=!p.injured&&!p.benched,isGK=p.position==="GK";
-                const scoreLabel=isGK?"Not rated":p.position==="FWD"?`ATK ${p.score}`:p.position==="DEF"?`DEF ${p.score}`:`ATK ${p.mdfAtkScore} · DEF ${p.mdfDefScore}`;
+                const widePrefix=p.wide&&(p.position==="DEF"||p.position==="FWD")?"Wide ":"";
+                const altLabel=p.position==="MDF"&&p.altPosition?` · Also ${p.altPosition}`:"";
+                const scoreLabel=isGK?"Not rated":p.position==="FWD"?`${widePrefix}ATK ${p.score}`:p.position==="DEF"?`${widePrefix}DEF ${p.score}`:`ATK ${p.mdfAtkScore} · DEF ${p.mdfDefScore}${altLabel}`;
                 return(
                   <div key={p.id} style={{background:active?C.card:C.surface,border:`1px solid ${active?C.border:C.border+"44"}`,borderRadius:8,padding:"11px 14px",marginBottom:7,opacity:p.injured?0.5:1,display:"flex",alignItems:"center",gap:12}}>
                     <div style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:5,padding:"3px 7px",fontSize:10,fontWeight:700,minWidth:36,textAlign:"center",flexShrink:0}}>{p.position}</div>
@@ -612,11 +621,14 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport}){
               </div>
               {p.position==="GK"&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>Not included in ratings</div>}
               {p.position==="DEF"&&<div><div style={{fontSize:10,color:C.muted,marginBottom:4}}>Defense Score (1–10)</div><div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min="1" max="10" step="1" value={p.score} onChange={e=>updPlayer(editTeam,p.id,"score",+e.target.value)} style={{flex:1,accentColor:C.green}}/><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:C.green,minWidth:32,textAlign:"center"}}>{p.score}</div></div></div>}
+              {p.position==="DEF"&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:C.muted,flex:1}}>Role</span><button onClick={()=>updPlayer(editTeam,p.id,"wide",!p.wide)} style={{background:p.wide?`${C.accent}22`:"transparent",color:p.wide?C.accent:C.muted,border:`1px solid ${p.wide?C.accent:C.border}`,borderRadius:5,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{p.wide?"Wide Defender":"Central Defender"}</button></div>}
               {p.position==="FWD"&&<div><div style={{fontSize:10,color:C.muted,marginBottom:4}}>Attack Score (1–10)</div><div style={{display:"flex",alignItems:"center",gap:12}}><input type="range" min="1" max="10" step="1" value={p.score} onChange={e=>updPlayer(editTeam,p.id,"score",+e.target.value)} style={{flex:1,accentColor:C.red}}/><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:C.red,minWidth:32,textAlign:"center"}}>{p.score}</div></div></div>}
+              {p.position==="FWD"&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:C.muted,flex:1}}>Role</span><button onClick={()=>updPlayer(editTeam,p.id,"wide",!p.wide)} style={{background:p.wide?`${C.accent}22`:"transparent",color:p.wide?C.accent:C.muted,border:`1px solid ${p.wide?C.accent:C.border}`,borderRadius:5,padding:"4px 12px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{p.wide?"Wide Forward":"Central Forward"}</button></div>}
               {p.position==="MDF"&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 <div><div style={{fontSize:10,color:C.red,marginBottom:4}}>Attack Score (1–10)</div><div style={{display:"flex",alignItems:"center",gap:10}}><input type="range" min="1" max="10" step="1" value={p.mdfAtkScore} onChange={e=>updPlayer(editTeam,p.id,"mdfAtkScore",+e.target.value)} style={{flex:1,accentColor:C.red}}/><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:C.red,minWidth:28,textAlign:"center"}}>{p.mdfAtkScore}</div></div></div>
                 <div><div style={{fontSize:10,color:C.green,marginBottom:4}}>Defense Score (1–10)</div><div style={{display:"flex",alignItems:"center",gap:10}}><input type="range" min="1" max="10" step="1" value={p.mdfDefScore} onChange={e=>updPlayer(editTeam,p.id,"mdfDefScore",+e.target.value)} style={{flex:1,accentColor:C.green}}/><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:C.green,minWidth:28,textAlign:"center"}}>{p.mdfDefScore}</div></div></div>
               </div>}
+              {p.position==="MDF"&&<div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}><span style={{fontSize:10,color:C.muted,flex:1}}>Alt position</span><div style={{display:"flex",gap:6}}>{["DEF","FWD"].map(alt=>{const active=p.altPosition===alt;return<button key={alt} onClick={()=>updPlayer(editTeam,p.id,"altPosition",active?null:alt)} style={{background:active?`${C.accent}22`:"transparent",color:active?C.accent:C.muted,border:`1px solid ${active?C.accent:C.border}`,borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{alt}</button>;})}</div></div>}
             </div>
           ))}
           <div style={{display:"flex",gap:8,marginTop:4}}>
