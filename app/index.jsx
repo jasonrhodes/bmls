@@ -99,8 +99,20 @@ function predictedLineup(team,fixtures){
   const formation=FORMATIONS.find(f=>f.id===team.formation)||FORMATIONS[0];
   const available=team.players.filter(p=>!p.injured&&!p.benched);
   const gk=available.find(p=>p.position==="GK");
-  const scored=pos=>available.filter(p=>p.position===pos).map(p=>({...p,formScore:playerFormScore(p.id,fixtures)})).sort((a,b)=>b.formScore-a.formScore);
-  return{gk:gk||null,defs:arrangeWide(scored("DEF").slice(0,formation.def)),mdfs:scored("MDF").slice(0,formation.mdf),fwds:arrangeWide(scored("FWD").slice(0,formation.fwd)),formation};
+  const baseRating=p=>p.position==="MDF"?(p.mdfAtkScore+p.mdfDefScore)/2:(p.score||5);
+  const sp=p=>({...p,formScore:playerFormScore(p.id,fixtures)});
+  const cmp=(a,b)=>b.formScore-a.formScore||baseRating(b)-baseRating(a);
+  const primaryDefs=available.filter(p=>p.position==="DEF").map(sp).sort(cmp).slice(0,formation.def);
+  const primaryMdfs=available.filter(p=>p.position==="MDF").map(sp).sort(cmp).slice(0,formation.mdf);
+  const primaryFwds=available.filter(p=>p.position==="FWD").map(sp).sort(cmp).slice(0,formation.fwd);
+  const used=new Set([...(gk?[gk.id]:[]),...primaryDefs.map(p=>p.id),...primaryMdfs.map(p=>p.id),...primaryFwds.map(p=>p.id)]);
+  const altPool=available.filter(p=>p.position==="MDF"&&p.altPosition&&!used.has(p.id)).map(sp).sort(cmp);
+  const altUsed=new Set();
+  const defs=[...primaryDefs];
+  const fwds=[...primaryFwds];
+  altPool.filter(p=>p.altPosition==="DEF"&&!altUsed.has(p.id)).slice(0,formation.def-defs.length).forEach(p=>{defs.push({...p,position:"DEF"});altUsed.add(p.id);});
+  altPool.filter(p=>p.altPosition==="FWD"&&!altUsed.has(p.id)).slice(0,formation.fwd-fwds.length).forEach(p=>{fwds.push({...p,position:"FWD"});altUsed.add(p.id);});
+  return{gk:gk||null,defs:arrangeWide(defs),mdfs:primaryMdfs,fwds:arrangeWide(fwds),formation};
 }
 
 function predictMatch(home,away){
