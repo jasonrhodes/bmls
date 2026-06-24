@@ -597,21 +597,22 @@ function RatingsTab({teams}){
           <button key={m.key} onClick={()=>setMetric(m.key)} style={{background:metric===m.key?m.color:C.card,color:metric===m.key?"#000":C.sub,border:"none",borderRadius:6,padding:"7px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{m.label}</button>
         ))}
       </div>
-      <SLabel>Team Ratings</SLabel>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:24}}>
-        {teamStats.map(t=>{const val=metric==="atk"?t.atk:t.def,color=metric==="atk"?C.red:C.green;return(
-          <div key={t.id} style={{background:C.card,borderRadius:8,padding:"12px 14px"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+      <SLabel>Team Rankings</SLabel>
+      <div style={{marginBottom:24}}>
+        {teamStats.map((t,i)=>{const val=metric==="atk"?t.atk:t.def,color=metric==="atk"?C.red:C.green;return(
+          <div key={t.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
+              <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
               <TeamBadge color={t.color} crest={t.crest} size={20}/>
               <span style={{fontSize:13,fontWeight:600,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</span>
-              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color}}>{val||"—"}</span>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color,minWidth:36,textAlign:"right"}}>{val||"—"}</span>
             </div>
             <div style={{height:4,background:C.border,borderRadius:2,overflow:"hidden"}}><div style={{width:`${((val||0)/10)*100}%`,height:"100%",background:color,borderRadius:2}}/></div>
           </div>
         );})}
       </div>
       <SLabel>Top Players</SLabel>
-      {sorted.slice(0,12).map((p,i)=>{const color=metric==="atk"?C.red:C.green;return(
+      {sorted.slice(0,20).map((p,i)=>{const color=metric==="atk"?C.red:C.green;return(
         <div key={p.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
             <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
