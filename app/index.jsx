@@ -308,14 +308,11 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
       <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{(p.name||"?").trim().split(/\s+/).pop()||"?"}</span>
     </div>
   );
-  const PlayerRow=({players,color,team,wingbacks=false})=>{
-    const spread=wingbacks&&players.length===3;
-    return(
-      <div style={{display:"flex",justifyContent:spread?"space-between":"center",gap:spread?0:players.length===2?36:6,padding:spread?"0 6px":"0 4px",flexWrap:"wrap"}}>
-        {players.map(p=><Dot key={p.id} p={p} color={color} team={team}/>)}
-      </div>
-    );
-  };
+  const PlayerRow=({players,color,team})=>(
+    <div style={{display:"flex",justifyContent:"center",gap:players.length===2?36:6,padding:"0 4px",flexWrap:"wrap"}}>
+      {players.map(p=><Dot key={p.id} p={p} color={color} team={team}/>)}
+    </div>
+  );
   return(
     <div style={{position:"relative",borderRadius:10,overflow:"hidden",background:"#1b6530"}}>
       <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(180deg,rgba(0,0,0,0) 0px,rgba(0,0,0,0) 36px,rgba(0,0,0,0.07) 36px,rgba(0,0,0,0.07) 72px)",pointerEvents:"none"}}/>
@@ -335,7 +332,7 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
           <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontWeight:600,letterSpacing:1}}>{hl.formation.label}</span>
         </div>
         {hl.gk&&<div style={{display:"flex",justifyContent:"center",marginBottom:28}}><Dot p={hl.gk} color={home.color} team={home}/></div>}
-        {hl.defs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.defs} color={home.color} team={home} wingbacks={hl.defs.length===3}/></div>}
+        {hl.defs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.defs} color={home.color} team={home}/></div>}
         {hl.mdfs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.mdfs} color={home.color} team={home}/></div>}
         {hl.fwds.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.fwds} color={home.color} team={home}/></div>}
         <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0"}}>
@@ -343,7 +340,7 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
         </div>
         {al.fwds.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.fwds} color={away.color} team={away}/></div>}
         {al.mdfs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.mdfs} color={away.color} team={away}/></div>}
-        {al.defs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.defs} color={away.color} team={away} wingbacks={al.defs.length===3}/></div>}
+        {al.defs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.defs} color={away.color} team={away}/></div>}
         {al.gk&&<div style={{display:"flex",justifyContent:"center",marginBottom:24}}><Dot p={al.gk} color={away.color} team={away}/></div>}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 4px"}}>
           <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:2,background:away.color,flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.9)",letterSpacing:.5}}>{away.name}</span></div>
