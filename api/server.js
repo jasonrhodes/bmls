@@ -56,6 +56,10 @@ app.delete('/api/fixture/:id', async (req, res) => {
   res.json({ ok: true })
 })
 
+app.get('/bundle.js', (req, res) => {
+  res.sendFile(join(__dirname, 'bundle.js'))
+})
+
 app.get('/', (req, res) => {
   res.sendFile(join(__dirname, 'index.html'))
 })
