@@ -1670,21 +1670,39 @@ function NewsTab({teams,fixtures,transfers,activeMatchWeek}){
 
 const KIT_COLORS=['#3B82F6','#EF4444','#22C55E','#F59E0B','#A855F7','#EC4899','#06B6D4','#F97316','#E2E8F0','#6B7280'];
 
-function CreateTab(){
+function CreateTab({teams}){
   const freshDraft=()=>({id:String(Date.now()+Math.random()),name:'',color:'#3B82F6',formation:'2-2-1',players:[]});
   const[myTeams,setMyTeams]=useState(()=>{try{return JSON.parse(localStorage.getItem('bmls_my_teams')||'[]');}catch{return[];}});
   const[draft,setDraft]=useState(freshDraft);
   const[editSlot,setEditSlot]=useState(null);
+  const[slotSearch,setSlotSearch]=useState('');
+  const[slotShowAll,setSlotShowAll]=useState(false);
   const[saved,setSaved]=useState(false);
+
+  const allPlayers=useMemo(()=>(teams||[]).flatMap(t=>t.players.filter(p=>p.name).map(p=>({...p,teamName:t.name||'',teamColor:t.color||C.accent,teamId:t.id}))),[teams]);
 
   const form=FORMATIONS.find(f=>f.id===draft.formation)||FORMATIONS[0];
   const totalSlots=1+form.def+form.mdf+form.fwd;
   const rows=[{pos:'FWD',n:form.fwd},{pos:'MDF',n:form.mdf},{pos:'DEF',n:form.def},{pos:'GK',n:1}].filter(r=>r.n>0);
 
-  const getPlayer=(pos,i)=>draft.players.find(p=>p.pos===pos&&p.i===i);
-  const setSlot=(pos,i,name)=>{
-    const others=draft.players.filter(p=>!(p.pos===pos&&p.i===i));
-    setDraft(d=>({...d,players:name.trim()?[...others,{pos,i,name:name.trim()}]:others}));
+  const getSlot=(pos,i)=>draft.players.find(p=>p.pos===pos&&p.i===i);
+  const clearSlot=(pos,i)=>setDraft(d=>({...d,players:d.players.filter(p=>!(p.pos===pos&&p.i===i))}));
+
+  const filteredPlayers=useMemo(()=>{
+    if(!editSlot)return[];
+    const q=slotSearch.toLowerCase();
+    let list=slotShowAll?allPlayers:allPlayers.filter(p=>p.position===editSlot.pos||p.altPosition===editSlot.pos);
+    if(q)list=list.filter(p=>p.name.toLowerCase().includes(q)||(p.teamName||'').toLowerCase().includes(q));
+    return list;
+  },[allPlayers,editSlot,slotSearch,slotShowAll]);
+
+  const openSlot=(pos,i)=>{setEditSlot({pos,i});setSlotSearch('');setSlotShowAll(false);};
+  const closeSlot=()=>{setEditSlot(null);setSlotSearch('');setSlotShowAll(false);};
+
+  const pickPlayer=p=>{
+    const others=draft.players.filter(x=>!(x.pos===editSlot.pos&&x.i===editSlot.i));
+    setDraft(d=>({...d,players:[...others,{pos:editSlot.pos,i:editSlot.i,name:p.name,playerId:p.id,teamId:p.teamId,teamColor:p.teamColor,position:p.position}]}));
+    closeSlot();
   };
 
   const saveTeam=()=>{
@@ -1695,11 +1713,11 @@ function CreateTab(){
     localStorage.setItem('bmls_my_teams',JSON.stringify(updated));
     setSaved(true);setTimeout(()=>setSaved(false),2000);
   };
-  const loadTeam=t=>{setDraft({...t});setEditSlot(null);};
+  const loadTeam=t=>{setDraft({...t});closeSlot();};
   const deleteTeam=id=>{
     const updated=myTeams.filter(t=>t.id!==id);
     setMyTeams(updated);localStorage.setItem('bmls_my_teams',JSON.stringify(updated));
-    if(draft.id===id)setDraft(freshDraft());
+    if(draft.id===id){setDraft(freshDraft());closeSlot();}
   };
 
   const slotGap=n=>n===1?0:n===2?60:n===3?28:18;
@@ -1732,7 +1750,7 @@ function CreateTab(){
           {FORMATIONS.map(f=>{
             const on=draft.formation===f.id;
             return(
-              <button key={f.id} onClick={()=>{setDraft(d=>({...d,formation:f.id,players:[]}));setEditSlot(null);}} style={{
+              <button key={f.id} onClick={()=>{setDraft(d=>({...d,formation:f.id,players:[]}));closeSlot();}} style={{
                 flex:1,padding:'10px 4px',borderRadius:8,cursor:'pointer',fontFamily:"'Bebas Neue',sans-serif",
                 fontSize:18,letterSpacing:1,
                 background:on?`${C.accent}22`:'transparent',color:on?C.accent:C.muted,
@@ -1743,7 +1761,7 @@ function CreateTab(){
         </div>
       </div>
 
-      {/* Pitch builder */}
+      {/* Pitch */}
       <div style={{background:'#1b6530',borderRadius:editSlot?'10px 10px 0 0':10,overflow:'hidden',marginBottom:editSlot?0:10}}>
         <div style={{padding:'18px 8px 10px',position:'relative'}}>
           <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:72,height:72,borderRadius:'50%',border:'1px solid rgba(255,255,255,0.13)',pointerEvents:'none'}}/>
@@ -1752,21 +1770,22 @@ function CreateTab(){
             {rows.map(({pos,n})=>(
               <div key={pos} style={{display:'flex',justifyContent:'center',gap:slotGap(n),alignItems:'center'}}>
                 {Array.from({length:n},(_,i)=>{
-                  const pl=getPlayer(pos,i);
+                  const sl=getSlot(pos,i);
                   const active=editSlot?.pos===pos&&editSlot?.i===i;
+                  const dotColor=active?draft.color:sl?sl.teamColor||draft.color:draft.color+'55';
                   return(
-                    <div key={i} onClick={()=>setEditSlot(active?null:{pos,i,name:pl?.name||''})} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer'}}>
+                    <div key={i} onClick={()=>active?closeSlot():openSlot(pos,i)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer'}}>
                       <div style={{
                         width:42,height:42,borderRadius:'50%',
-                        background:active?draft.color:pl?draft.color:draft.color+'55',
-                        border:`2.5px solid ${active?'#fff':pl?'rgba(255,255,255,0.85)':'rgba(255,255,255,0.3)'}`,
+                        background:dotColor,
+                        border:`2.5px solid ${active?'#fff':sl?'rgba(255,255,255,0.85)':'rgba(255,255,255,0.3)'}`,
                         boxShadow:active?'0 0 0 3px rgba(255,255,255,0.35),0 2px 8px rgba(0,0,0,0.5)':'0 2px 6px rgba(0,0,0,0.4)',
                         display:'flex',alignItems:'center',justifyContent:'center',transition:'all 0.15s',
                       }}>
-                        <span style={{fontSize:8,fontWeight:900,color:active||pl?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.45)',letterSpacing:.5}}>{pos}</span>
+                        <span style={{fontSize:8,fontWeight:900,color:active||sl?'rgba(255,255,255,0.95)':'rgba(255,255,255,0.45)',letterSpacing:.5}}>{pos}</span>
                       </div>
-                      <span style={{fontSize:9,color:pl?'#fff':'rgba(255,255,255,0.45)',fontWeight:700,textAlign:'center',lineHeight:1.2,textShadow:'0 1px 3px rgba(0,0,0,0.9)',maxWidth:54,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                        {pl?.name?.trim().split(/\s+/).pop()||'+'}
+                      <span style={{fontSize:9,color:sl?'#fff':'rgba(255,255,255,0.4)',fontWeight:700,textAlign:'center',lineHeight:1.2,textShadow:'0 1px 3px rgba(0,0,0,0.9)',maxWidth:54,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                        {sl?.name?.trim().split(/\s+/).pop()||'+'}
                       </span>
                     </div>
                   );
@@ -1778,31 +1797,61 @@ function CreateTab(){
         </div>
       </div>
 
-      {/* Slot editor */}
+      {/* Player picker */}
       {editSlot&&(
         <div style={{background:C.card,border:`1px solid ${C.accent}`,borderTop:'none',borderRadius:'0 0 10px 10px',padding:12,marginBottom:10}}>
-          <div style={{fontSize:10,color:C.accent,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>{editSlot.pos} — Player Name</div>
-          <div style={{display:'flex',gap:8}}>
-            <input
-              autoFocus
-              value={editSlot.name}
-              onChange={e=>setEditSlot(s=>({...s,name:e.target.value}))}
-              onKeyDown={e=>{if(e.key==='Enter'){setSlot(editSlot.pos,editSlot.i,editSlot.name);setEditSlot(null);}}}
-              placeholder={`Enter ${editSlot.pos} player name`}
-              style={{flex:1,background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,padding:'7px 10px',fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:'none'}}
-            />
-            <Btn onClick={()=>{setSlot(editSlot.pos,editSlot.i,editSlot.name);setEditSlot(null);}}>Done</Btn>
+          <div style={{display:'flex',alignItems:'center',marginBottom:10}}>
+            <div style={{fontSize:10,color:C.accent,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',flex:1}}>{editSlot.pos} — Pick a Player</div>
+            <button onClick={closeSlot} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:18,lineHeight:1,padding:'0 2px'}}>✕</button>
           </div>
-          {getPlayer(editSlot.pos,editSlot.i)&&(
-            <button onClick={()=>{setSlot(editSlot.pos,editSlot.i,'');setEditSlot(null);}} style={{marginTop:8,background:'none',border:'none',color:C.red,fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif",padding:0}}>Remove player</button>
+          <input
+            autoFocus
+            value={slotSearch}
+            onChange={e=>setSlotSearch(e.target.value)}
+            placeholder="Search by name or team..."
+            style={{width:'100%',background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,color:C.text,padding:'7px 10px',fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:'none',marginBottom:8}}
+          />
+          <div style={{display:'flex',gap:6,marginBottom:8}}>
+            {[false,true].map(all=>(
+              <button key={String(all)} onClick={()=>setSlotShowAll(all)} style={{padding:'4px 10px',borderRadius:5,fontSize:11,fontWeight:600,cursor:'pointer',fontFamily:"'DM Sans',sans-serif",background:slotShowAll===all?`${C.accent}22`:'transparent',color:slotShowAll===all?C.accent:C.muted,border:`1px solid ${slotShowAll===all?C.accent:C.border}`}}>
+                {all?'All positions':`${editSlot.pos} only`}
+              </button>
+            ))}
+          </div>
+          <div style={{maxHeight:220,overflowY:'auto'}}>
+            {filteredPlayers.length===0?(
+              <div style={{fontSize:12,color:C.muted,textAlign:'center',padding:'18px 0',fontStyle:'italic'}}>
+                {allPlayers.length===0?'No players in the BMLS yet':'No players match'}
+              </div>
+            ):filteredPlayers.map(p=>{
+              const already=draft.players.some(x=>x.playerId===p.id);
+              return(
+                <div key={`${p.teamId}-${p.id}`} onClick={()=>pickPlayer(p)} style={{
+                  display:'flex',alignItems:'center',gap:10,padding:'8px 6px',borderRadius:7,cursor:'pointer',marginBottom:2,
+                  background:already?`${C.accent}18`:'transparent',
+                  opacity:p.injured||p.suspended?0.45:1,
+                }}>
+                  <div style={{width:10,height:10,borderRadius:'50%',background:p.teamColor,flexShrink:0,border:'1px solid rgba(255,255,255,0.2)'}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}{(p.injured||p.suspended)&&<span style={{fontSize:10,color:p.injured?C.red:C.gold,marginLeft:6}}>{p.injured?'Inj':'Susp'}</span>}</div>
+                    <div style={{fontSize:10,color:C.muted}}>{p.teamName}</div>
+                  </div>
+                  <div style={{background:posColor(p.position)+'22',color:posColor(p.position),borderRadius:4,padding:'2px 6px',fontSize:10,fontWeight:700,flexShrink:0}}>{p.position}</div>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.text,minWidth:20,textAlign:'right'}}>{p.position==='GK'?'—':p.position==='MDF'?p.mdfAtkScore:p.score}</div>
+                </div>
+              );
+            })}
+          </div>
+          {getSlot(editSlot.pos,editSlot.i)&&(
+            <button onClick={()=>{clearSlot(editSlot.pos,editSlot.i);closeSlot();}} style={{marginTop:8,background:'none',border:'none',color:C.red,fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif",padding:'4px 0',display:'block'}}>✕ Remove player from slot</button>
           )}
         </div>
       )}
 
-      {/* Actions */}
+      {/* Save / New */}
       <div style={{display:'flex',gap:8,marginBottom:20}}>
         <Btn onClick={saveTeam} variant={saved?'success':'primary'} style={{flex:1}}>{saved?'✓ Saved':'Save Team'}</Btn>
-        <Btn onClick={()=>{setDraft(freshDraft());setEditSlot(null);}} variant="secondary">New</Btn>
+        <Btn onClick={()=>{setDraft(freshDraft());closeSlot();}} variant="secondary">New</Btn>
       </div>
 
       {/* Saved teams */}
@@ -1942,7 +1991,7 @@ function App(){
         {tab==="transfers" &&<TransfersTab transfers={transfers} teams={teams}/>}
         {tab==="news"      &&<NewsTab teams={teams} fixtures={fixtures} transfers={transfers} activeMatchWeek={activeMatchWeek}/>}
         {tab==="odds"      &&<OddsTab teams={teams} fixtures={fixtures} activeMatchWeek={activeMatchWeek}/>}
-        {tab==="create"    &&<CreateTab/>}
+        {tab==="create"    &&<CreateTab teams={teams}/>}
         {tab==="manage"    &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} transfers={transfers} setTransfers={setTransfers} activeMatchWeek={activeMatchWeek} setActiveMatchWeek={setActiveMatchWeek} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
       </div>
     </div>
