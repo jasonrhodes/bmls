@@ -57,7 +57,7 @@ app.delete('/api/fixture/:id', async (req, res) => {
 })
 
 app.get('/', (req, res) => {
-  res.sendFile(join(__dirname, '..', 'index.html'))
+  res.sendFile(join(__dirname, 'index.html'))
 })
 
 const PORT = process.env.PORT || 3006
