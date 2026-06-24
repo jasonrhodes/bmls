@@ -56,15 +56,19 @@ async function loadState(){
     const data=await r.json();
     const all=data.fixtures||[];
     const meta=all.find(f=>f.id==='season_meta');
+    const social=all.find(f=>f.id==='social_data');
     return{
       teams:data.teams,
       fixtures:all.filter(f=>!f.type),
       transfers:all.filter(f=>f.type==='transfer'),
       activeMatchWeek:meta?.activeMatchWeek||1,
+      socialData:social||{id:'social_data',type:'meta',likes:{},comments:{}},
     };
   }catch{return null;}
 }
 async function syncMeta(amw){try{await fetch('/api/fixture/season_meta',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'season_meta',type:'meta',activeMatchWeek:amw})});}catch(e){console.error('sync meta:',e);}}
+async function syncSocialData(d){try{await fetch('/api/fixture/social_data',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});}catch(e){console.error('sync social:',e);}}
+function timeAgo(iso){const d=Date.now()-new Date(iso).getTime(),m=Math.floor(d/60000);if(m<1)return'now';if(m<60)return`${m}m`;const h=Math.floor(m/60);if(h<24)return`${h}h`;return`${Math.floor(h/24)}d`;}
 async function syncTeams(teams){try{await fetch('/api/teams',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(teams)});}catch(e){console.error('sync teams:',e);}}
 async function syncFixture(f){try{await fetch(`/api/fixture/${f.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});}catch(e){console.error('sync fixture:',e);}}
 async function deleteFixture(id){try{await fetch(`/api/fixture/${id}`,{method:'DELETE'});}catch(e){console.error('delete fixture:',e);}}
@@ -158,7 +162,9 @@ function predictedLineup(team,fixtures){
   while(defs.length<formation.def&&si<spares.length){defs.push({...spares[si],position:"DEF"});si++;}
   while(mdfs.length<formation.mdf&&si<spares.length){mdfs.push({...spares[si],position:"MDF"});si++;}
   while(fwds.length<formation.fwd&&si<spares.length){fwds.push({...spares[si],position:"FWD"});si++;}
-  return{gk:gk||null,defs:arrangeWide(defs),mdfs,fwds:arrangeWide(fwds),formation};
+  const startingIds=new Set([...(gk?[gk.id]:[]),...defs.map(p=>p.id),...mdfs.map(p=>p.id),...fwds.map(p=>p.id)]);
+  const bench=team.players.filter(p=>!p.injured&&!startingIds.has(p.id));
+  return{gk:gk||null,defs:arrangeWide(defs),mdfs,fwds:arrangeWide(fwds),formation,bench};
 }
 
 function predictMatch(home,away){
@@ -364,40 +370,58 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
       </div>
     );
   };
+  const BenchCol=({bench,color,team,align})=>(
+    <div style={{width:56,background:"#0d2214",flexShrink:0,borderRight:align==='left'?'1px solid rgba(255,255,255,0.07)':0,borderLeft:align==='right'?'1px solid rgba(255,255,255,0.07)':0,padding:"14px 5px",display:"flex",flexDirection:"column",alignItems:"center"}}>
+      <div style={{fontSize:6,color:"rgba(255,255,255,0.28)",letterSpacing:1.5,textTransform:"uppercase",marginBottom:10,textAlign:"center"}}>bench</div>
+      {bench.length===0&&<div style={{fontSize:8,color:"rgba(255,255,255,0.18)",textAlign:"center",lineHeight:1.4}}>—</div>}
+      {bench.map(p=>(
+        <div key={p.id} onClick={()=>onPlayerClick&&onPlayerClick({player:p,team})} style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:10,cursor:onPlayerClick?"pointer":"default"}}>
+          <div style={{width:28,height:28,borderRadius:"50%",background:color+"99",border:`1.5px solid ${color}66`,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:3}}>
+            <span style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.9)"}}>{p.position==="GK"?"GK":p.position}</span>
+          </div>
+          <span style={{fontSize:7,color:"rgba(255,255,255,0.6)",textAlign:"center",fontWeight:600,lineHeight:1.2,maxWidth:50,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(p.name||"?").trim().split(/\s+/).pop()}</span>
+        </div>
+      ))}
+    </div>
+  );
   return(
-    <div style={{position:"relative",borderRadius:10,overflow:"hidden",background:"#1b6530"}}>
-      <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(180deg,rgba(0,0,0,0) 0px,rgba(0,0,0,0) 36px,rgba(0,0,0,0.07) 36px,rgba(0,0,0,0.07) 72px)",pointerEvents:"none"}}/>
-      <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}} viewBox="0 0 300 460" preserveAspectRatio="none">
-        <rect x="8" y="6" width="284" height="448" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
-        <line x1="8" y1="230" x2="292" y2="230" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
-        <ellipse cx="150" cy="230" rx="44" ry="28" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
-        <circle cx="150" cy="230" r="2.5" fill="rgba(255,255,255,0.3)"/>
-        <rect x="82" y="6" width="136" height="68" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.2"/>
-        <rect x="82" y="386" width="136" height="68" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.2"/>
-        <rect x="114" y="6" width="72" height="24" fill="none" stroke="rgba(255,255,255,0.13)" strokeWidth="1"/>
-        <rect x="114" y="430" width="72" height="24" fill="none" stroke="rgba(255,255,255,0.13)" strokeWidth="1"/>
-      </svg>
-      <div style={{position:"relative",zIndex:1,padding:"20px 10px"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,padding:"0 4px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:2,background:home.color,flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.9)",letterSpacing:.5}}>{home.name}</span></div>
-          <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontWeight:600,letterSpacing:1}}>{hl.formation.label}</span>
-        </div>
-        {hl.gk&&<div style={{display:"flex",justifyContent:"center",marginBottom:28}}><Dot p={hl.gk} color={home.color} team={home}/></div>}
-        {hl.defs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.defs} color={home.color} team={home}/></div>}
-        {hl.mdfs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.mdfs} color={home.color} team={home}/></div>}
-        {hl.fwds.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.fwds} color={home.color} team={home} staggerCenter={hl.fwds.length===3} staggerDir={1}/></div>}
-        <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0"}}>
-          <div style={{flex:1,height:1,background:"rgba(255,255,255,0.15)"}}/><span style={{fontSize:8,color:"rgba(255,255,255,0.4)",fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>kick off</span><div style={{flex:1,height:1,background:"rgba(255,255,255,0.15)"}}/>
-        </div>
-        {al.fwds.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.fwds} color={away.color} team={away} staggerCenter={al.fwds.length===3} staggerDir={-1}/></div>}
-        {al.mdfs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.mdfs} color={away.color} team={away}/></div>}
-        {al.defs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.defs} color={away.color} team={away}/></div>}
-        {al.gk&&<div style={{display:"flex",justifyContent:"center",marginBottom:24}}><Dot p={al.gk} color={away.color} team={away}/></div>}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 4px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:2,background:away.color,flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.9)",letterSpacing:.5}}>{away.name}</span></div>
-          <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontWeight:600,letterSpacing:1}}>{al.formation.label}</span>
+    <div style={{borderRadius:10,overflow:"hidden",display:"flex"}}>
+      <BenchCol bench={hl.bench} color={home.color} team={home} align="left"/>
+      <div style={{flex:1,position:"relative",background:"#1b6530"}}>
+        <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(180deg,rgba(0,0,0,0) 0px,rgba(0,0,0,0) 36px,rgba(0,0,0,0.07) 36px,rgba(0,0,0,0.07) 72px)",pointerEvents:"none"}}/>
+        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}} viewBox="0 0 300 460" preserveAspectRatio="none">
+          <rect x="8" y="6" width="284" height="448" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
+          <line x1="8" y1="230" x2="292" y2="230" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
+          <ellipse cx="150" cy="230" rx="44" ry="28" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
+          <circle cx="150" cy="230" r="2.5" fill="rgba(255,255,255,0.3)"/>
+          <rect x="82" y="6" width="136" height="68" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.2"/>
+          <rect x="82" y="386" width="136" height="68" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.2"/>
+          <rect x="114" y="6" width="72" height="24" fill="none" stroke="rgba(255,255,255,0.13)" strokeWidth="1"/>
+          <rect x="114" y="430" width="72" height="24" fill="none" stroke="rgba(255,255,255,0.13)" strokeWidth="1"/>
+        </svg>
+        <div style={{position:"relative",zIndex:1,padding:"20px 10px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,padding:"0 4px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:2,background:home.color,flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.9)",letterSpacing:.5}}>{home.name}</span></div>
+            <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontWeight:600,letterSpacing:1}}>{hl.formation.label}</span>
+          </div>
+          {hl.gk&&<div style={{display:"flex",justifyContent:"center",marginBottom:28}}><Dot p={hl.gk} color={home.color} team={home}/></div>}
+          {hl.defs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.defs} color={home.color} team={home}/></div>}
+          {hl.mdfs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.mdfs} color={home.color} team={home}/></div>}
+          {hl.fwds.length>0&&<div style={{marginBottom:28}}><PlayerRow players={hl.fwds} color={home.color} team={home} staggerCenter={hl.fwds.length===3} staggerDir={1}/></div>}
+          <div style={{display:"flex",alignItems:"center",gap:8,margin:"20px 0"}}>
+            <div style={{flex:1,height:1,background:"rgba(255,255,255,0.15)"}}/><span style={{fontSize:8,color:"rgba(255,255,255,0.4)",fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>kick off</span><div style={{flex:1,height:1,background:"rgba(255,255,255,0.15)"}}/>
+          </div>
+          {al.fwds.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.fwds} color={away.color} team={away} staggerCenter={al.fwds.length===3} staggerDir={-1}/></div>}
+          {al.mdfs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.mdfs} color={away.color} team={away}/></div>}
+          {al.defs.length>0&&<div style={{marginBottom:28}}><PlayerRow players={al.defs} color={away.color} team={away}/></div>}
+          {al.gk&&<div style={{display:"flex",justifyContent:"center",marginBottom:24}}><Dot p={al.gk} color={away.color} team={away}/></div>}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 4px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:2,background:away.color,flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.9)",letterSpacing:.5}}>{away.name}</span></div>
+            <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontWeight:600,letterSpacing:1}}>{al.formation.label}</span>
+          </div>
         </div>
       </div>
+      <BenchCol bench={al.bench} color={away.color} team={away} align="right"/>
     </div>
   );
 }
@@ -1302,6 +1326,38 @@ function generateArticles(teams,fixtures,transfers,activeMW){
     }
   }
 
+  // pundit debate — find contested positions where a team has more players than formation slots
+  const PUNDITS=['Gary','Micah','Roy','Jamie','Ian','Robbie','Steve','Lee'];
+  const debateCands=[];
+  named.filter(t=>t.players.length>0).forEach(team=>{
+    const formation=FORMATIONS.find(f=>f.id===team.formation)||FORMATIONS[0];
+    ['DEF','MDF','FWD'].forEach(pos=>{
+      const slots=pos==='DEF'?formation.def:pos==='MDF'?formation.mdf:formation.fwd;
+      if(slots===0)return;
+      const pp=team.players.filter(p=>p.position===pos&&p.name&&!p.injured).sort((a,b)=>{
+        const va=pos==='MDF'?(a.mdfAtkScore+a.mdfDefScore)/2:(a.score||5);
+        const vb=pos==='MDF'?(b.mdfAtkScore+b.mdfDefScore)/2:(b.score||5);
+        return vb-va;
+      });
+      if(pp.length>slots&&pp[slots-1]?.name&&pp[slots]?.name)debateCands.push({team,starter:pp[slots-1],benched:pp[slots],pos,slots});
+    });
+  });
+  debateCands.slice(0,2).forEach(({team,starter,benched,pos})=>{
+    const seed=((starter.name.length*7)+(benched.name.length*3)+(team.name.length))%1000;
+    const dp1=PUNDITS[seed%PUNDITS.length],dp2=PUNDITS[(seed+3)%PUNDITS.length];
+    const posLabel=pos==='FWD'?'forward spot':pos==='DEF'?'defensive berth':'midfield role';
+    articles.push({
+      tag:'Pundit Debate',color:'#f97316',
+      headline:`${dp1} vs ${dp2}: Should ${team.name} start ${benched.name} ahead of ${starter.name}?`,
+      body:`A genuine selection headache for the ${team.name} manager.`,
+      date:`Match Week ${activeMW}`,priority:3,
+      debate:{sides:[
+        {pundit:dp1,backs:benched.name,quote:`There is no debate here — ${benched.name} should be starting. The numbers might back ${starter.name} but football is not played on spreadsheets. ${benched.name} brings something different to that ${posLabel} and the team would be better for it.`},
+        {pundit:dp2,backs:starter.name,quote:`Absolute nonsense. ${starter.name} earns their place every single week. You do not drop players who are delivering results. ${benched.name} is a fine option off the bench but you cannot rip up what is clearly working for ${team.name}.`},
+      ]},
+    });
+  });
+
   return articles.sort((a,b)=>a.priority-b.priority);
 }
 
@@ -1338,23 +1394,145 @@ function ManagePasswordModal({onSuccess,onCancel}){
   );
 }
 
-function NewsTab({teams,fixtures,transfers,activeMatchWeek}){
+function NewsTab({teams,fixtures,transfers,activeMatchWeek,socialData,setSocialData}){
   const articles=useMemo(()=>generateArticles(teams,fixtures,transfers,activeMatchWeek),[teams,fixtures,transfers,activeMatchWeek]);
+  const[likedSet,setLikedSet]=useState(()=>new Set());
+  const[expanded,setExpanded]=useState(()=>new Set());
+  const[commentInputs,setCommentInputs]=useState({});
+  const[replyInputs,setReplyInputs]=useState({});
+  const[replyingTo,setReplyingTo]=useState(null);
+  const[cname,setCname]=useState(()=>localStorage.getItem('bmls_cname')||'');
+  const aKey=a=>`${a.tag}__${a.headline.slice(0,48)}`;
   const tagBg=color=>color+'22';
+
+  const handleLike=key=>{
+    if(likedSet.has(key))return;
+    setLikedSet(prev=>{const s=new Set(prev);s.add(key);return s;});
+    const nd={...socialData,likes:{...socialData.likes,[key]:(socialData.likes[key]||0)+1}};
+    setSocialData(nd);syncSocialData(nd);
+  };
+
+  const postComment=(key,replyToId=null)=>{
+    const inp=replyToId?replyInputs[replyToId]:commentInputs[key];
+    const name=(inp?.name||cname||'Anonymous').trim();
+    const text=(inp?.text||'').trim();
+    if(!text)return;
+    if(name!==cname){setCname(name);localStorage.setItem('bmls_cname',name);}
+    const c={id:String(Date.now()+Math.random()),name,text,time:new Date().toISOString(),replyTo:replyToId||null};
+    const nd={...socialData,comments:{...socialData.comments,[key]:[...(socialData.comments[key]||[]),c]}};
+    setSocialData(nd);syncSocialData(nd);
+    if(replyToId){setReplyInputs(p=>({...p,[replyToId]:{name,text:''}}));setReplyingTo(null);}
+    else setCommentInputs(p=>({...p,[key]:{name,text:''}}));
+  };
+
+  const inputStyle={background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 10px",fontSize:11,color:C.text,outline:"none",fontFamily:"'DM Sans',sans-serif"};
+
   if(articles.length===0)return<Empty icon="📰" msg="No news yet." hint="Add teams, fixtures and results to generate articles."/>;
   return(
     <div>
       <SLabel>Latest News</SLabel>
-      {articles.map((a,i)=>(
-        <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"16px",marginBottom:12,borderLeft:`3px solid ${a.color}`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <span style={{background:tagBg(a.color),color:a.color,borderRadius:4,padding:"3px 8px",fontSize:10,fontWeight:700,letterSpacing:.5,textTransform:"uppercase"}}>{a.tag}</span>
-            <span style={{fontSize:10,color:C.muted}}>{a.date}</span>
+      {articles.map((a,i)=>{
+        const key=aKey(a);
+        const likeCount=socialData.likes[key]||0;
+        const liked=likedSet.has(key);
+        const allCmts=socialData.comments[key]||[];
+        const topCmts=allCmts.filter(c=>!c.replyTo);
+        const getReplies=id=>allCmts.filter(c=>c.replyTo===id);
+        const isExpanded=expanded.has(key);
+        const cinp=commentInputs[key]||{name:cname,text:''};
+        return(
+          <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,marginBottom:12,borderLeft:`3px solid ${a.color}`,overflow:"hidden"}}>
+            <div style={{padding:"16px 16px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <span style={{background:tagBg(a.color),color:a.color,borderRadius:4,padding:"3px 8px",fontSize:10,fontWeight:700,letterSpacing:.5,textTransform:"uppercase"}}>{a.tag}</span>
+                <span style={{fontSize:10,color:C.muted}}>{a.date}</span>
+              </div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:19,lineHeight:1.15,color:C.white,letterSpacing:.5,marginBottom:8}}>{a.headline}</div>
+              {a.debate?(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {a.debate.sides.map((s,si)=>(
+                    <div key={si} style={{background:C.surface,borderRadius:8,padding:"10px 12px",borderLeft:`2px solid ${si===0?'#f97316':'#6366f1'}`}}>
+                      <div style={{fontSize:10,fontWeight:700,color:si===0?'#f97316':'#6366f1',letterSpacing:.5,textTransform:"uppercase",marginBottom:4}}>{s.pundit} <span style={{color:C.muted,fontWeight:400,textTransform:"none"}}>backs {s.backs}</span></div>
+                      <div style={{fontSize:12,color:C.sub,lineHeight:1.6,fontStyle:"italic"}}>"{s.quote}"</div>
+                    </div>
+                  ))}
+                </div>
+              ):(
+                <div style={{fontSize:12,color:C.sub,lineHeight:1.6}}>{a.body}</div>
+              )}
+            </div>
+            <div style={{padding:"8px 16px",borderTop:`1px solid ${C.border}22`,display:"flex",alignItems:"center",gap:14}}>
+              <button onClick={()=>handleLike(key)} style={{background:"none",border:"none",cursor:liked?"default":"pointer",display:"flex",alignItems:"center",gap:4,padding:0,color:liked?C.red:C.muted,fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>
+                <span style={{fontSize:14}}>{liked?'❤️':'🤍'}</span>{likeCount>0&&<span>{likeCount}</span>}
+              </button>
+              <button onClick={()=>setExpanded(prev=>{const s=new Set(prev);s.has(key)?s.delete(key):s.add(key);return s;})} style={{background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:4,padding:0,color:C.muted,fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>
+                <span style={{fontSize:13}}>💬</span><span>{allCmts.length>0?`${allCmts.length} comment${allCmts.length!==1?'s':''}`:isExpanded?'Hide':'Comment'}</span>
+              </button>
+            </div>
+            {isExpanded&&(
+              <div style={{borderTop:`1px solid ${C.border}`,padding:"14px 16px",background:C.surface}}>
+                {topCmts.length===0&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic",marginBottom:14}}>No comments yet — be the first!</div>}
+                {topCmts.map(c=>{
+                  const reps=getReplies(c.id);
+                  const isReplyHere=replyingTo?.key===key&&replyingTo?.id===c.id;
+                  const rinp=replyInputs[c.id]||{name:cname,text:''};
+                  return(
+                    <div key={c.id} style={{marginBottom:14}}>
+                      <div style={{display:"flex",gap:8}}>
+                        <div style={{width:28,height:28,borderRadius:"50%",background:C.accent+"33",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          <span style={{fontSize:11,fontWeight:700,color:C.accent}}>{(c.name||'A')[0].toUpperCase()}</span>
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:3}}>
+                            <span style={{fontSize:12,fontWeight:700,color:C.text}}>{c.name}</span>
+                            <span style={{fontSize:10,color:C.muted}}>{timeAgo(c.time)}</span>
+                          </div>
+                          <div style={{fontSize:12,color:C.sub,lineHeight:1.5,marginBottom:4}}>{c.text}</div>
+                          <button onClick={()=>setReplyingTo(isReplyHere?null:{key,id:c.id})} style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:10,fontWeight:600,padding:0,fontFamily:"'DM Sans',sans-serif"}}>Reply</button>
+                        </div>
+                      </div>
+                      {reps.length>0&&(
+                        <div style={{marginLeft:36,marginTop:8,borderLeft:`1px solid ${C.border}`,paddingLeft:12}}>
+                          {reps.map(r=>(
+                            <div key={r.id} style={{display:"flex",gap:8,marginBottom:8}}>
+                              <div style={{width:22,height:22,borderRadius:"50%",background:C.purple+"33",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                <span style={{fontSize:9,fontWeight:700,color:C.purple}}>{(r.name||'A')[0].toUpperCase()}</span>
+                              </div>
+                              <div>
+                                <div style={{display:"flex",alignItems:"baseline",gap:5,marginBottom:2}}>
+                                  <span style={{fontSize:11,fontWeight:700,color:C.text}}>{r.name}</span>
+                                  <span style={{fontSize:9,color:C.muted}}>{timeAgo(r.time)}</span>
+                                </div>
+                                <div style={{fontSize:11,color:C.sub,lineHeight:1.5}}>{r.text}</div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {isReplyHere&&(
+                        <div style={{marginLeft:36,marginTop:8,display:"flex",flexDirection:"column",gap:5}}>
+                          <input value={rinp.name} onChange={e=>setReplyInputs(p=>({...p,[c.id]:{...rinp,name:e.target.value}}))} placeholder="Your name" style={{...inputStyle,width:"100%"}}/>
+                          <div style={{display:"flex",gap:6}}>
+                            <input value={rinp.text} onChange={e=>setReplyInputs(p=>({...p,[c.id]:{...rinp,text:e.target.value}}))} onKeyDown={e=>e.key==='Enter'&&postComment(key,c.id)} placeholder="Write a reply..." style={{...inputStyle,flex:1}}/>
+                            <button onClick={()=>postComment(key,c.id)} style={{background:C.accent,border:"none",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",flexShrink:0}}>Post</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div style={{borderTop:topCmts.length>0?`1px solid ${C.border}`:"none",paddingTop:topCmts.length>0?12:0,display:"flex",flexDirection:"column",gap:5}}>
+                  <input value={cinp.name} onChange={e=>setCommentInputs(p=>({...p,[key]:{...cinp,name:e.target.value}}))} placeholder="Your name" style={{...inputStyle,width:"100%"}}/>
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={cinp.text} onChange={e=>setCommentInputs(p=>({...p,[key]:{...cinp,text:e.target.value}}))} onKeyDown={e=>e.key==='Enter'&&postComment(key)} placeholder="Add a comment..." style={{...inputStyle,flex:1}}/>
+                    <button onClick={()=>postComment(key)} style={{background:C.accent,border:"none",borderRadius:6,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",flexShrink:0}}>Post</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:19,lineHeight:1.15,color:C.white,letterSpacing:.5,marginBottom:8}}>{a.headline}</div>
-          <div style={{fontSize:12,color:C.sub,lineHeight:1.6}}>{a.body}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1381,6 +1559,7 @@ function App(){
   const[transfers,setTransfers]=useState([]);
   const[activeMatchWeek,setActiveMatchWeek]=useState(1);
   const[profilePlayer,setProfilePlayer]=useState(null);
+  const[socialData,setSocialData]=useState({id:'social_data',type:'meta',likes:{},comments:{}});
 
   useEffect(()=>{
     loadState().then(data=>{
@@ -1388,6 +1567,7 @@ function App(){
       setFixtures(data?.fixtures||[]);
       setTransfers(data?.transfers||[]);
       setActiveMatchWeek(data?.activeMatchWeek||1);
+      setSocialData(data?.socialData||{id:'social_data',type:'meta',likes:{},comments:{}});
       setLoaded(true);
     });
   },[]);
@@ -1457,7 +1637,7 @@ function App(){
         {tab==="ratings" &&<RatingsTab teams={teams}/>}
         {tab==="squads"    &&<SquadsTab teams={teams} setTeams={setTeams}/>}
         {tab==="transfers" &&<TransfersTab transfers={transfers} teams={teams}/>}
-        {tab==="news"      &&<NewsTab teams={teams} fixtures={fixtures} transfers={transfers} activeMatchWeek={activeMatchWeek}/>}
+        {tab==="news"      &&<NewsTab teams={teams} fixtures={fixtures} transfers={transfers} activeMatchWeek={activeMatchWeek} socialData={socialData} setSocialData={setSocialData}/>}
         {tab==="odds"      &&<OddsTab teams={teams} fixtures={fixtures} activeMatchWeek={activeMatchWeek}/>}
         {tab==="manage"    &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} transfers={transfers} setTransfers={setTransfers} activeMatchWeek={activeMatchWeek} setActiveMatchWeek={setActiveMatchWeek} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
       </div>
