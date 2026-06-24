@@ -17,8 +17,15 @@ const FORMATIONS=[
   {id:"2-0-3",label:"2-3",  def:2,mdf:0,fwd:3},
 ];
 
+const ROLES=[
+  {id:'captain',label:'Captain',short:'C',color:'#F59E0B'},
+  {id:'viceCaptain',label:'Vice Capt',short:'VC',color:'#94A3B8'},
+  {id:'penTaker',label:'Pen Taker',short:'P',color:'#3B82F6'},
+  {id:'fkTaker',label:'FK Taker',short:'FK',color:'#A855F7'},
+];
+
 const makeTeam=id=>({id,name:"",shortName:"",color:"#3B82F6",crest:null,players:[],formation:"2-2-1"});
-const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,injured:false,suspended:false,wide:false,altPosition:null});
+const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,injured:false,suspended:false,wide:false,altPosition:null,roles:[]});
 const makeFixture=()=>({id:String(Date.now()+Math.random()),homeId:null,awayId:null,date:"",homeScore:null,awayScore:null,played:false,playerStats:[],matchWeek:null});
 
 function generateSeason(namedTeams){
@@ -189,9 +196,10 @@ function simulateMatch(home,away,fixtures){
   const genGoals=(n,players,team)=>{
     const out=players.filter(p=>p.position!=='GK');if(!out.length)return;
     const topFWD=[...out].filter(p=>p.position==='FWD').sort((a,b)=>(b.score||0)-(a.score||0))[0]||out[0];
+    const penTaker=players.find(p=>(p.roles||[]).includes('penTaker'))||topFWD;
     for(let i=0;i<n;i++){
       const isPen=Math.random()<0.15;
-      const scorer=isPen?topFWD:wPick(out,scorW);
+      const scorer=isPen?penTaker:wPick(out,scorW);
       const astCands=players.filter(p=>p.id!==scorer.id);
       const assist=Math.random()<0.78&&astCands.length?wPick(astCands,p=>astW(p,scorer.id)):null;
       events.push({team,type:'goal',player:scorer,assist,minute:mnt(),isPen});
@@ -436,14 +444,22 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
   const al=predictedLineup(away,fixtures);
   const homeRows=[hl.defs,hl.mdfs,hl.fwds].filter(r=>r.length>0);
   const awayRows=[al.fwds,al.mdfs,al.defs].filter(r=>r.length>0);
-  const Dot=({p,color,team})=>(
-    <div onClick={()=>onPlayerClick&&onPlayerClick({player:p,team})} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,width:54,cursor:onPlayerClick?"pointer":"default"}}>
-      <div style={{width:34,height:34,borderRadius:"50%",background:color,border:"2.5px solid rgba(255,255,255,0.9)",boxShadow:"0 2px 8px rgba(0,0,0,0.5)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <span style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.95)",letterSpacing:.5,textShadow:"0 1px 2px rgba(0,0,0,0.4)"}}>{p.position==="GK"?"GK":p.position}</span>
+  const Dot=({p,color,team})=>{
+    const isCap=(p.roles||[]).includes('captain');
+    const isPen=(p.roles||[]).includes('penTaker');
+    return(
+      <div onClick={()=>onPlayerClick&&onPlayerClick({player:p,team})} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,width:54,cursor:onPlayerClick?"pointer":"default",position:"relative"}}>
+        <div style={{position:"relative",width:34,height:34}}>
+          <div style={{width:34,height:34,borderRadius:"50%",background:color,border:"2.5px solid rgba(255,255,255,0.9)",boxShadow:"0 2px 8px rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <span style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.95)",letterSpacing:.5,textShadow:"0 1px 2px rgba(0,0,0,0.4)"}}>{p.position==="GK"?"GK":p.position}</span>
+          </div>
+          {isCap&&<div style={{position:"absolute",top:-4,right:-4,width:14,height:14,borderRadius:"50%",background:"#F59E0B",fontSize:7,fontWeight:900,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,boxShadow:"0 1px 3px rgba(0,0,0,0.5)"}}>C</div>}
+          {!isCap&&isPen&&<div style={{position:"absolute",top:-4,right:-4,width:14,height:14,borderRadius:"50%",background:"#3B82F6",fontSize:7,fontWeight:900,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,boxShadow:"0 1px 3px rgba(0,0,0,0.5)"}}>P</div>}
+        </div>
+        <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{(p.name||"?").trim().split(/\s+/).pop()||"?"}</span>
       </div>
-      <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{(p.name||"?").trim().split(/\s+/).pop()||"?"}</span>
-    </div>
-  );
+    );
+  };
   const PlayerRow=({players,color,team,staggerCenter=false,staggerDir=1})=>{
     const doStagger=staggerCenter&&players.length===3;
     return(
@@ -799,7 +815,10 @@ function SquadsTab({teams,setTeams}){
                   <div key={p.id} style={{background:active?C.card:C.surface,border:`1px solid ${active?C.border:C.border+"44"}`,borderRadius:8,padding:"11px 14px",marginBottom:7,opacity:p.injured?0.5:1,display:"flex",alignItems:"center",gap:12}}>
                     <div style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:5,padding:"3px 7px",fontSize:10,fontWeight:700,minWidth:36,textAlign:"center",flexShrink:0}}>{p.position}</div>
                     <div style={{flex:1}}>
-                      <div style={{fontSize:14,fontWeight:600,color:active?C.text:C.muted}}>{p.name||"Unnamed"}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                        <div style={{fontSize:14,fontWeight:600,color:active?C.text:C.muted}}>{p.name||"Unnamed"}</div>
+                        {(p.roles||[]).map(r=>{const role=ROLES.find(x=>x.id===r);return role?<span key={r} style={{fontSize:9,fontWeight:700,color:role.color,background:role.color+"22",border:`1px solid ${role.color}44`,borderRadius:3,padding:"1px 5px"}}>{role.short}</span>:null;})}
+                      </div>
                       <div style={{fontSize:11,color:C.muted,marginTop:2}}>{scoreLabel}</div>
                     </div>
                     <div style={{display:"flex",gap:6}}>
@@ -968,6 +987,10 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
   const saveTeam=t=>{const nt=teams.map(x=>x.id===t.id?t:x);setTeams(nt);syncTeams(nt);setEditTeam(null);};
   const addPlayer=t=>{if(t.players.length<8)setEditTeam({...t,players:[...t.players,makePlayer()]});};
   const updPlayer=(t,pid,field,val)=>setEditTeam({...t,players:t.players.map(p=>p.id===pid?{...p,[field]:val}:p)});
+  const toggleRole=(t,pid,roleId)=>setEditTeam({...t,players:t.players.map(p=>{
+    if(p.id===pid){const has=(p.roles||[]).includes(roleId);return{...p,roles:has?(p.roles||[]).filter(r=>r!==roleId):[...(p.roles||[]),roleId]};}
+    return{...p,roles:(p.roles||[]).filter(r=>r!==roleId)};
+  })});
   const delPlayer=(t,pid)=>setEditTeam({...t,players:t.players.filter(p=>p.id!==pid)});
   const addFix=()=>{setEditFix({...makeFixture()});};
   const saveFix=f=>{setFixtures(fs=>{const ex=fs.some(x=>x.id===f.id);return ex?fs.map(x=>x.id===f.id?f:x):[...fs,f];});syncFixture(f);setEditFix(null);};
@@ -1068,6 +1091,14 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={()=>updPlayer(editTeam,p.id,"injured",!p.injured)} style={{background:p.injured?`${C.red}33`:"transparent",color:p.injured?C.red:C.muted,border:`1px solid ${p.injured?C.red:C.border}`,borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Injured</button>
                   <button onClick={()=>updPlayer(editTeam,p.id,"suspended",!p.suspended)} style={{background:p.suspended?`${C.gold}33`:"transparent",color:p.suspended?C.gold:C.muted,border:`1px solid ${p.suspended?C.gold:C.border}`,borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Suspended</button>
+                </div>
+              </div>
+              <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:10,color:C.muted,flex:1}}>Roles</span>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                  {ROLES.map(role=>{const has=(p.roles||[]).includes(role.id);return(
+                    <button key={role.id} onClick={()=>toggleRole(editTeam,p.id,role.id)} style={{background:has?role.color+"33":"transparent",color:has?role.color:C.muted,border:`1px solid ${has?role.color:C.border}`,borderRadius:5,padding:"4px 8px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{role.short}</button>
+                  );})}
                 </div>
               </div>
             </div>
