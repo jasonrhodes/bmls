@@ -910,6 +910,12 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,o
               </div>
             </div>
           </div>
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Formation</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {FORMATIONS.map(f=><button key={f.id} onClick={()=>setEditTeam({...editTeam,formation:f.id})} style={{background:editTeam.formation===f.id?C.accent:C.card,color:editTeam.formation===f.id?C.white:C.sub,border:`1px solid ${editTeam.formation===f.id?C.accent:C.border}`,borderRadius:6,padding:"6px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{f.label}</button>)}
+            </div>
+          </div>
           <SLabel>Squad ({editTeam.players.length}/8)</SLabel>
           {editTeam.players.map(p=>(
             <div key={p.id} style={{background:C.surface,borderRadius:8,padding:"12px",marginBottom:10}}>
