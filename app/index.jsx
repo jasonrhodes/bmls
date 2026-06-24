@@ -17,7 +17,7 @@ const FORMATIONS=[
   {id:"2-0-3",label:"2-3",  def:2,mdf:0,fwd:3},
 ];
 
-const makeTeam=id=>({id,name:"",shortName:"",color:"#3B82F6",players:[],formation:"2-2-1"});
+const makeTeam=id=>({id,name:"",shortName:"",color:"#3B82F6",crest:null,players:[],formation:"2-2-1"});
 const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,injured:false,benched:false,wide:false,altPosition:null});
 const makeFixture=()=>({id:String(Date.now()+Math.random()),homeId:null,awayId:null,date:"",homeScore:null,awayScore:null,played:false,playerStats:[],matchWeek:null});
 
@@ -50,10 +50,36 @@ function currentMatchWeek(fixtures){
   return null;
 }
 
-async function loadState(){try{const r=await fetch('/api/state');if(!r.ok)return null;return r.json();}catch{return null;}}
+async function loadState(){
+  try{
+    const r=await fetch('/api/state');if(!r.ok)return null;
+    const data=await r.json();
+    const all=data.fixtures||[];
+    return{teams:data.teams,fixtures:all.filter(f=>f.type!=='transfer'),transfers:all.filter(f=>f.type==='transfer')};
+  }catch{return null;}
+}
 async function syncTeams(teams){try{await fetch('/api/teams',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(teams)});}catch(e){console.error('sync teams:',e);}}
 async function syncFixture(f){try{await fetch(`/api/fixture/${f.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});}catch(e){console.error('sync fixture:',e);}}
 async function deleteFixture(id){try{await fetch(`/api/fixture/${id}`,{method:'DELETE'});}catch(e){console.error('delete fixture:',e);}}
+async function syncTransfer(t){try{await fetch(`/api/fixture/${t.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(t)});}catch(e){console.error('sync transfer:',e);}}
+
+async function resizeCrest(file){
+  return new Promise(resolve=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const canvas=document.createElement('canvas');
+      canvas.width=100;canvas.height=100;
+      const ctx=canvas.getContext('2d');
+      const min=Math.min(img.width,img.height);
+      const sx=(img.width-min)/2,sy=(img.height-min)/2;
+      ctx.drawImage(img,sx,sy,min,min,0,0,100,100);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg',0.75));
+    };
+    img.src=url;
+  });
+}
 
 function depthMultiplier(n){if(n<=1)return 0.9;if(n>=4)return 1.05;return 1.0;}
 
@@ -187,7 +213,9 @@ const Btn=({children,onClick,variant="primary",small})=>{
   return <button onClick={onClick} style={{background:bg,color:col,border:"none",borderRadius:6,cursor:"pointer",padding:small?"5px 10px":"8px 16px",fontSize:small?12:13,fontWeight:600,fontFamily:"'DM Sans',sans-serif"}}>{children}</button>;
 };
 const SLabel=({children})=><div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:C.muted,textTransform:"uppercase",marginBottom:10}}>{children}</div>;
-const TeamBadge=({color,size=28})=><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:size,height:size,borderRadius:6,background:color,fontSize:size*0.45,flexShrink:0}}>⚽</span>;
+const TeamBadge=({color,crest,size=28})=>crest
+  ?<img src={crest} style={{width:size,height:size,borderRadius:6,objectFit:"cover",flexShrink:0,display:"inline-block"}} alt=""/>
+  :<span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:size,height:size,borderRadius:6,background:color,fontSize:size*0.45,flexShrink:0}}>⚽</span>;
 const FormPip=({r})=>{const bg=r==="W"?C.green:r==="L"?C.red:C.gold;return<span style={{display:"inline-block",width:14,height:14,borderRadius:3,background:bg,marginLeft:3,fontSize:9,fontWeight:700,color:"#000",textAlign:"center",lineHeight:"14px"}}>{r}</span>;};
 const Empty=({icon,msg,hint})=><div style={{textAlign:"center",padding:"60px 0",color:C.muted}}><div style={{fontSize:32,marginBottom:12}}>{icon}</div><div style={{fontSize:15,color:C.sub}}>{msg}</div><div style={{fontSize:13,marginTop:6}}>{hint}</div></div>;
 const NumStepper=({value,onChange,min=0,max=99,label,color=C.text})=>(
@@ -377,13 +405,13 @@ function FixturesTab({teams,fixtures,onPlayerClick}){
                 <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>setExpandedId(expanded?null:f.id)}>
                   <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"flex-end"}}>
                     <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:C.text,letterSpacing:.5}}>{h.name}</span>
-                    <TeamBadge color={h.color} size={26}/>
+                    <TeamBadge color={h.color} crest={h.crest} size={26}/>
                   </div>
                   <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:f.played?26:15,color:f.played?C.gold:C.muted,background:C.surface,borderRadius:8,padding:"6px 16px",textAlign:"center",letterSpacing:2,minWidth:80}}>
                     {f.played?`${f.homeScore}  ${f.awayScore}`:"vs"}
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <TeamBadge color={a.color} size={26}/>
+                    <TeamBadge color={a.color} crest={a.crest} size={26}/>
                     <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:C.text,letterSpacing:.5}}>{a.name}</span>
                   </div>
                 </div>
@@ -458,7 +486,7 @@ function TableTab({teams,fixtures}){
                 </td>
                 <td style={{padding:"13px 10px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <TeamBadge color={row.color} size={22}/>
+                    <TeamBadge color={row.color} crest={row.crest} size={22}/>
                     <div><div style={{fontWeight:600,fontSize:14,color:C.text}}>{row.name}</div><div style={{fontSize:10,color:C.muted}}>{row.shortName}</div></div>
                   </div>
                 </td>
@@ -551,7 +579,7 @@ function RatingsTab({teams}){
         {teamStats.map(t=>{const val=metric==="atk"?t.atk:t.def,color=metric==="atk"?C.red:C.green;return(
           <div key={t.id} style={{background:C.card,borderRadius:8,padding:"12px 14px"}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-              <TeamBadge color={t.color} size={20}/>
+              <TeamBadge color={t.color} crest={t.crest} size={20}/>
               <span style={{fontSize:13,fontWeight:600,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</span>
               <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color}}>{val||"—"}</span>
             </div>
@@ -672,13 +700,13 @@ function OddsTab({teams,fixtures}){
               <div style={{fontSize:10,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>{fmtDate(f.date)}</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:12}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <TeamBadge color={h.color} size={30}/>
+                  <TeamBadge color={h.color} crest={h.crest} size={30}/>
                   <div><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:C.text}}>{h.name}</div><div style={{fontSize:10,color:C.muted}}>ATK {hr.atk} · DEF {hr.def}</div></div>
                 </div>
                 <div style={{textAlign:"center",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,color:C.muted,letterSpacing:2}}>VS</div>
                 <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"flex-end"}}>
                   <div style={{textAlign:"right"}}><div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:C.text}}>{a.name}</div><div style={{fontSize:10,color:C.muted}}>ATK {ar.atk} · DEF {ar.def}</div></div>
-                  <TeamBadge color={a.color} size={30}/>
+                  <TeamBadge color={a.color} crest={a.crest} size={30}/>
                 </div>
               </div>
             </div>
@@ -721,12 +749,79 @@ function OddsTab({teams,fixtures}){
   );
 }
 
-function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport,onToast}){
+function TransfersTab({transfers,teams}){
+  if(transfers.length===0)return<Empty icon="🔄" msg="No transfers yet." hint="Go to Manage → Transfers to make a trade."/>;
+  return(
+    <div>
+      <SLabel>Transfer History</SLabel>
+      {[...transfers].sort((a,b)=>b.date.localeCompare(a.date)).map(t=>{
+        const from=teams.find(x=>x.id===t.fromTeamId);
+        const to=teams.find(x=>x.id===t.toTeamId);
+        return(
+          <div key={t.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px",marginBottom:10}}>
+            <div style={{fontSize:10,color:C.muted,marginBottom:12,letterSpacing:1}}>{t.date||"Unknown date"}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                  <TeamBadge color={t.fromTeamColor} crest={from?.crest} size={18}/>
+                  <span style={{fontSize:10,color:C.muted,fontWeight:600}}>{t.fromTeamName}</span>
+                </div>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.text,letterSpacing:.5}}>{t.playerOut.name}</div>
+                <div style={{fontSize:10,color:posColor(t.playerOut.position),fontWeight:700,marginTop:2}}>{t.playerOut.position}</div>
+              </div>
+              <div style={{fontSize:20,color:C.muted,fontWeight:300}}>⇄</div>
+              <div style={{textAlign:"right"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,justifyContent:"flex-end"}}>
+                  <span style={{fontSize:10,color:C.muted,fontWeight:600}}>{t.toTeamName}</span>
+                  <TeamBadge color={t.toTeamColor} crest={to?.crest} size={18}/>
+                </div>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.text,letterSpacing:.5}}>{t.playerIn.name}</div>
+                <div style={{fontSize:10,color:posColor(t.playerIn.position),fontWeight:700,marginTop:2}}>{t.playerIn.position}</div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,onExport,onImport,onToast}){
   const[view,setView]=useState("teams");
   const[editTeam,setEditTeam]=useState(null);
   const[editFix,setEditFix]=useState(null);
+  const[tradeTeamA,setTradeTeamA]=useState(null);
+  const[tradeTeamB,setTradeTeamB]=useState(null);
+  const[tradePlayerA,setTradePlayerA]=useState(null);
+  const[tradePlayerB,setTradePlayerB]=useState(null);
   const named=teams.filter(t=>t.name);
   const importRef=useRef();
+
+  const teamA=teams.find(t=>t.id===tradeTeamA);
+  const teamB=teams.find(t=>t.id===tradeTeamB);
+  const playerA=teamA?.players.find(p=>p.id===tradePlayerA);
+  const playerB=teamB?.players.find(p=>p.id===tradePlayerB);
+
+  const executeTrade=()=>{
+    if(!teamA||!teamB||!playerA||!playerB)return;
+    const nt=teams.map(t=>{
+      if(t.id===teamA.id)return{...t,players:[...t.players.filter(p=>p.id!==playerA.id),playerB]};
+      if(t.id===teamB.id)return{...t,players:[...t.players.filter(p=>p.id!==playerB.id),playerA]};
+      return t;
+    });
+    const record={
+      id:`transfer_${Date.now()}`,type:'transfer',
+      date:new Date().toISOString().slice(0,10),
+      fromTeamId:teamA.id,fromTeamName:teamA.name,fromTeamColor:teamA.color,
+      toTeamId:teamB.id,toTeamName:teamB.name,toTeamColor:teamB.color,
+      playerOut:{id:playerA.id,name:playerA.name,position:playerA.position},
+      playerIn:{id:playerB.id,name:playerB.name,position:playerB.position},
+    };
+    setTeams(nt);syncTeams(nt);
+    setTransfers(prev=>[record,...prev]);syncTransfer(record);
+    setTradeTeamA(null);setTradeTeamB(null);setTradePlayerA(null);setTradePlayerB(null);
+    onToast('Trade completed!');
+  };
 
   const saveTeam=t=>{const nt=teams.map(x=>x.id===t.id?t:x);setTeams(nt);syncTeams(nt);setEditTeam(null);};
   const addPlayer=t=>{if(t.players.length<8)setEditTeam({...t,players:[...t.players,makePlayer()]});};
@@ -756,7 +851,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport,onToas
   return(
     <div>
       <div style={{display:"flex",gap:8,marginBottom:24}}>
-        {["teams","fixtures"].map(v=>(
+        {["teams","fixtures","transfers"].map(v=>(
           <button key={v} onClick={()=>{setView(v);setEditTeam(null);setEditFix(null);}} style={{background:view===v?C.accent:C.card,color:view===v?C.white:C.sub,border:"none",borderRadius:6,padding:"8px 18px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",textTransform:"capitalize"}}>{v}</button>
         ))}
       </div>
@@ -766,7 +861,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport,onToas
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
             {teams.map(t=>(
               <div key={t.id} onClick={()=>setEditTeam({...t,players:t.players.map(p=>({...p}))})} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
-                <TeamBadge color={t.name?t.color:C.border} size={32}/>
+                <TeamBadge color={t.name?t.color:C.border} crest={t.name?t.crest:null} size={32}/>
                 <div><div style={{fontWeight:600,fontSize:14,color:t.name?C.text:C.muted}}>{t.name||`Team ${t.id}`}</div><div style={{fontSize:11,color:C.muted}}>{t.players.length}/8{t.shortName?` · ${t.shortName}`:""}</div></div>
               </div>
             ))}
@@ -783,9 +878,24 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport,onToas
             <div><div style={{fontSize:11,color:C.muted,marginBottom:4}}>Full Name</div><Inp value={editTeam.name} onChange={v=>setEditTeam({...editTeam,name:v})} placeholder="e.g. City FC"/></div>
             <div><div style={{fontSize:11,color:C.muted,marginBottom:4}}>Short (3 letters)</div><Inp value={editTeam.shortName} onChange={v=>setEditTeam({...editTeam,shortName:v.toUpperCase().slice(0,3)})} placeholder="CTY"/></div>
           </div>
-          <div style={{marginBottom:20}}>
-            <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Team Colour</div>
-            <input type="color" value={editTeam.color} onChange={e=>setEditTeam({...editTeam,color:e.target.value})} style={{width:48,height:32,border:"none",background:"none",cursor:"pointer"}}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
+            <div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:4}}>Team Colour</div>
+              <input type="color" value={editTeam.color} onChange={e=>setEditTeam({...editTeam,color:e.target.value})} style={{width:48,height:32,border:"none",background:"none",cursor:"pointer"}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Team Crest</div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <TeamBadge color={editTeam.color} crest={editTeam.crest} size={40}/>
+                <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                  <label style={{background:C.accent,color:C.white,borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                    Upload
+                    <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{const f=e.target.files[0];if(f){const d=await resizeCrest(f);setEditTeam({...editTeam,crest:d});}e.target.value="";}}/>
+                  </label>
+                  {editTeam.crest&&<button onClick={()=>setEditTeam({...editTeam,crest:null})} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:5,color:C.muted,padding:"3px 10px",fontSize:11,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Remove</button>}
+                </div>
+              </div>
+            </div>
           </div>
           <SLabel>Squad ({editTeam.players.length}/8)</SLabel>
           {editTeam.players.map(p=>(
@@ -861,7 +971,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport,onToas
               </div>
               {[hTeam,aTeam].filter(Boolean).map(team=>(
                 <div key={team.id} style={{marginBottom:24}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><TeamBadge color={team.color} size={20}/><span style={{fontWeight:700,fontSize:14,color:C.text}}>{team.name}</span></div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}><TeamBadge color={team.color} crest={team.crest} size={20}/><span style={{fontWeight:700,fontSize:14,color:C.text}}>{team.name}</span></div>
                   {teamPlayers(team).map(({player,playerId,...ps})=>(
                     <div key={playerId} style={{background:C.surface,borderRadius:8,padding:"12px",marginBottom:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
@@ -903,7 +1013,64 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport,onToas
           </div>
         );
       })()}
-      {!editTeam&&!editFix&&(
+      {view==="transfers"&&(
+        <div>
+          <SLabel>Make a Trade</SLabel>
+          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"16px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+              <div>
+                <div style={{fontSize:10,color:C.muted,marginBottom:4}}>Team A</div>
+                <Sel value={tradeTeamA||""} onChange={v=>{setTradeTeamA(+v||null);setTradePlayerA(null);}} options={[{value:"",label:"Select team..."},...named.map(t=>({value:t.id,label:t.name}))]}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:C.muted,marginBottom:4}}>Team B</div>
+                <Sel value={tradeTeamB||""} onChange={v=>{setTradeTeamB(+v||null);setTradePlayerB(null);}} options={[{value:"",label:"Select team..."},...named.filter(t=>t.id!==tradeTeamA).map(t=>({value:t.id,label:t.name}))]}/>
+              </div>
+            </div>
+            {teamA&&<div style={{marginBottom:12}}>
+              <div style={{fontSize:10,color:C.muted,marginBottom:4}}>Player leaving {teamA.name}</div>
+              <Sel value={tradePlayerA||""} onChange={v=>setTradePlayerA(+v||null)} options={[{value:"",label:"Select player..."},...(teamA.players||[]).map(p=>({value:p.id,label:`${p.name} (${p.position})`}))]}/>
+            </div>}
+            {teamB&&<div style={{marginBottom:16}}>
+              <div style={{fontSize:10,color:C.muted,marginBottom:4}}>Player leaving {teamB.name}</div>
+              <Sel value={tradePlayerB||""} onChange={v=>setTradePlayerB(+v||null)} options={[{value:"",label:"Select player..."},...(teamB.players||[]).map(p=>({value:p.id,label:`${p.name} (${p.position})`}))]}/>
+            </div>}
+            {playerA&&playerB&&(
+              <div>
+                <div style={{background:C.surface,borderRadius:8,padding:"12px",marginBottom:12}}>
+                  <div style={{fontSize:10,color:C.muted,marginBottom:8,letterSpacing:1,textTransform:"uppercase"}}>Trade Preview</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8}}>
+                    <div>
+                      <div style={{fontSize:11,fontWeight:700,color:C.text}}>{playerA.name}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{playerA.position} → {teamB.name}</div>
+                    </div>
+                    <span style={{color:C.muted,fontSize:18}}>⇄</span>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.text}}>{playerB.name}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{playerB.position} → {teamA.name}</div>
+                    </div>
+                  </div>
+                </div>
+                <Btn onClick={executeTrade} variant="success">✓ Execute Trade</Btn>
+              </div>
+            )}
+            {!teamA&&!teamB&&<div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Select two teams and one player from each to make a trade.</div>}
+          </div>
+          {transfers.length>0&&(
+            <div style={{marginTop:24}}>
+              <SLabel>Recent Trades</SLabel>
+              {[...transfers].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(t=>(
+                <div key={t.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 14px",marginBottom:8,display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8}}>
+                  <div><div style={{fontSize:12,fontWeight:700,color:C.text}}>{t.playerOut.name}</div><div style={{fontSize:10,color:C.muted}}>{t.fromTeamName} → {t.toTeamName}</div></div>
+                  <span style={{color:C.muted,fontSize:16}}>⇄</span>
+                  <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:700,color:C.text}}>{t.playerIn.name}</div><div style={{fontSize:10,color:C.muted}}>{t.date}</div></div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {!editTeam&&!editFix&&view!=="transfers"&&(
         <div style={{marginTop:32,borderTop:`1px solid ${C.border}`,paddingTop:20}}>
           <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Backup or restore your data as a JSON file.</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -918,13 +1085,14 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport,onToas
 }
 
 const TABS=[
-  {id:"fixtures",label:"Fixtures"},
-  {id:"table",   label:"Table"},
-  {id:"stats",   label:"Stats"},
-  {id:"ratings", label:"Ratings"},
-  {id:"squads",  label:"Squads"},
-  {id:"odds",    label:"Odds"},
-  {id:"manage",  label:"⚙ Manage"},
+  {id:"fixtures",  label:"Fixtures"},
+  {id:"table",     label:"Table"},
+  {id:"stats",     label:"Stats"},
+  {id:"ratings",   label:"Ratings"},
+  {id:"squads",    label:"Squads"},
+  {id:"transfers", label:"Transfers"},
+  {id:"odds",      label:"Odds"},
+  {id:"manage",    label:"⚙ Manage"},
 ];
 
 function App(){
@@ -933,12 +1101,14 @@ function App(){
   const[loaded,setLoaded]=useState(false);
   const[teams,setTeams]=useState([]);
   const[fixtures,setFixtures]=useState([]);
+  const[transfers,setTransfers]=useState([]);
   const[profilePlayer,setProfilePlayer]=useState(null);
 
   useEffect(()=>{
     loadState().then(data=>{
       setTeams(data?.teams?.length?data.teams:Array.from({length:12},(_,i)=>makeTeam(i+1)));
       setFixtures(data?.fixtures||[]);
+      setTransfers(data?.transfers||[]);
       setLoaded(true);
     });
   },[]);
@@ -946,14 +1116,14 @@ function App(){
   const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(null),2500);};
 
   const handleExport=useCallback(()=>{
-    const data=JSON.stringify({teams,fixtures},null,2);
+    const data=JSON.stringify({teams,fixtures,transfers},null,2);
     const blob=new Blob([data],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
     a.href=url;a.download=`bmls-export-${new Date().toISOString().slice(0,10)}.json`;
     a.click();URL.revokeObjectURL(url);
     showToast("📤 Exported!");
-  },[teams,fixtures]);
+  },[teams,fixtures,transfers]);
 
   const handleImport=useCallback(async raw=>{
     try{
@@ -961,8 +1131,10 @@ function App(){
       if(!data.teams||!data.fixtures)throw new Error("Invalid file");
       setTeams(data.teams);
       setFixtures(data.fixtures);
+      setTransfers(data.transfers||[]);
       await syncTeams(data.teams);
       await Promise.all(data.fixtures.map(f=>syncFixture(f)));
+      await Promise.all((data.transfers||[]).map(t=>syncTransfer(t)));
       showToast("📥 Imported & synced!");
     }catch{showToast("❌ Invalid file");}
   },[]);
@@ -1003,9 +1175,10 @@ function App(){
         {tab==="table"   &&<TableTab teams={teams} fixtures={fixtures}/>}
         {tab==="stats"   &&<StatsTab teams={teams} fixtures={fixtures}/>}
         {tab==="ratings" &&<RatingsTab teams={teams}/>}
-        {tab==="squads"  &&<SquadsTab teams={teams} setTeams={setTeams}/>}
-        {tab==="odds"    &&<OddsTab teams={teams} fixtures={fixtures}/>}
-        {tab==="manage"  &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
+        {tab==="squads"    &&<SquadsTab teams={teams} setTeams={setTeams}/>}
+        {tab==="transfers" &&<TransfersTab transfers={transfers} teams={teams}/>}
+        {tab==="odds"      &&<OddsTab teams={teams} fixtures={fixtures}/>}
+        {tab==="manage"    &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} transfers={transfers} setTransfers={setTransfers} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
       </div>
     </div>
   );
