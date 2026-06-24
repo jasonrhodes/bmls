@@ -212,6 +212,57 @@ function PredLineup({team,fixtures,side="left"}){
   );
 }
 
+function FieldLineup({home,away,fixtures}){
+  if(!home||!away)return null;
+  const hl=predictedLineup(home,fixtures);
+  const al=predictedLineup(away,fixtures);
+  const homeRows=[hl.defs,hl.mdfs,hl.fwds].filter(r=>r.length>0);
+  const awayRows=[al.fwds,al.mdfs,al.defs].filter(r=>r.length>0);
+  const Dot=({p,color})=>(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,width:54}}>
+      <div style={{width:34,height:34,borderRadius:"50%",background:color,border:"2.5px solid rgba(255,255,255,0.9)",boxShadow:"0 2px 8px rgba(0,0,0,0.5)",flexShrink:0}}/>
+      <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{p.name||"?"}</span>
+    </div>
+  );
+  const PlayerRow=({players,color})=>(
+    <div style={{display:"flex",justifyContent:"center",gap:6,flexWrap:"wrap",padding:"0 4px"}}>
+      {players.map(p=><Dot key={p.id} p={p} color={color}/>)}
+    </div>
+  );
+  return(
+    <div style={{position:"relative",borderRadius:10,overflow:"hidden",background:"#1b6530"}}>
+      <div style={{position:"absolute",inset:0,background:"repeating-linear-gradient(180deg,rgba(0,0,0,0) 0px,rgba(0,0,0,0) 36px,rgba(0,0,0,0.07) 36px,rgba(0,0,0,0.07) 72px)",pointerEvents:"none"}}/>
+      <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"none"}} viewBox="0 0 300 460" preserveAspectRatio="none">
+        <rect x="8" y="6" width="284" height="448" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
+        <line x1="8" y1="230" x2="292" y2="230" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
+        <ellipse cx="150" cy="230" rx="44" ry="28" fill="none" stroke="rgba(255,255,255,0.22)" strokeWidth="1.5"/>
+        <circle cx="150" cy="230" r="2.5" fill="rgba(255,255,255,0.3)"/>
+        <rect x="82" y="6" width="136" height="68" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.2"/>
+        <rect x="82" y="386" width="136" height="68" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.2"/>
+        <rect x="114" y="6" width="72" height="24" fill="none" stroke="rgba(255,255,255,0.13)" strokeWidth="1"/>
+        <rect x="114" y="430" width="72" height="24" fill="none" stroke="rgba(255,255,255,0.13)" strokeWidth="1"/>
+      </svg>
+      <div style={{position:"relative",zIndex:1,padding:"16px 10px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,padding:"0 4px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:2,background:home.color,flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.9)",letterSpacing:.5}}>{home.name}</span></div>
+          <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontWeight:600,letterSpacing:1}}>{hl.formation.label}</span>
+        </div>
+        {hl.gk&&<div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Dot p={hl.gk} color={home.color}/></div>}
+        {homeRows.map((row,i)=><div key={i} style={{marginBottom:12}}><PlayerRow players={row} color={home.color}/></div>)}
+        <div style={{display:"flex",alignItems:"center",gap:8,margin:"10px 0"}}>
+          <div style={{flex:1,height:1,background:"rgba(255,255,255,0.15)"}}/><span style={{fontSize:8,color:"rgba(255,255,255,0.4)",fontWeight:700,letterSpacing:2,textTransform:"uppercase"}}>kick off</span><div style={{flex:1,height:1,background:"rgba(255,255,255,0.15)"}}/>
+        </div>
+        {awayRows.map((row,i)=><div key={i} style={{marginBottom:12}}><PlayerRow players={row} color={away.color}/></div>)}
+        {al.gk&&<div style={{display:"flex",justifyContent:"center",marginBottom:14}}><Dot p={al.gk} color={away.color}/></div>}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0 4px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:10,height:10,borderRadius:2,background:away.color,flexShrink:0}}/><span style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.9)",letterSpacing:.5}}>{away.name}</span></div>
+          <span style={{fontSize:9,color:"rgba(255,255,255,0.5)",fontWeight:600,letterSpacing:1}}>{al.formation.label}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FixturesTab({teams,fixtures}){
   const[filter,setFilter]=useState("all");
   const[expandedId,setExpandedId]=useState(null);
@@ -249,14 +300,9 @@ function FixturesTab({teams,fixtures}){
                   </div>
                 </div>
                 {expanded&&!f.played&&(f.matchWeek==null||f.matchWeek===currentMW)&&(
-                  <div style={{borderTop:`1px solid ${C.border}`,padding:"14px 16px",background:C.surface}}>
-                    <div style={{fontSize:10,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>Predicted Lineups</div>
-                    <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                      <PredLineup team={h} fixtures={fixtures} side="left"/>
-                      <div style={{width:1,background:C.border,alignSelf:"stretch",flexShrink:0}}/>
-                      <PredLineup team={a} fixtures={fixtures} side="right"/>
-                    </div>
-                    <div style={{fontSize:10,color:C.muted,marginTop:10,textAlign:"center"}}>Based on form & availability</div>
+                  <div style={{borderTop:`1px solid ${C.border}`,padding:"12px 14px",background:C.surface}}>
+                    <FieldLineup home={h} away={a} fixtures={fixtures}/>
+                    <div style={{fontSize:10,color:C.muted,marginTop:8,textAlign:"center"}}>Based on form & availability</div>
                   </div>
                 )}
                 {expanded&&f.played&&(()=>{
