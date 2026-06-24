@@ -172,6 +172,95 @@ function predictMatch(home,away){
   return{hxg,axg,hGoals:xgToGoals(hxg),aGoals:xgToGoals(axg)};
 }
 
+function simulateMatch(home,away,fixtures){
+  const{hxg,axg}=predictMatch(home,away);
+  const pois=λ=>{if(λ<=0)return 0;const L=Math.exp(-Math.min(λ,12));let k=0,p=1;do{k++;p*=Math.random();}while(p>L);return k-1;};
+  const hl=predictedLineup(home,fixtures);
+  const al=predictedLineup(away,fixtures);
+  const hPlayers=[hl.gk,...hl.defs,...hl.mdfs,...hl.fwds].filter(Boolean);
+  const aPlayers=[al.gk,...al.defs,...al.mdfs,...al.fwds].filter(Boolean);
+  if(!hPlayers.length||!aPlayers.length)return{hGoals:0,aGoals:0,events:[]};
+  const hGoals=pois(hxg),aGoals=pois(axg);
+  const wPick=(items,wFn)=>{const ws=items.map(wFn),tot=ws.reduce((s,w)=>s+w,0);if(tot<=0)return items[Math.floor(Math.random()*items.length)];let r=Math.random()*tot;for(let i=0;i<items.length;i++){r-=ws[i];if(r<=0)return items[i];}return items[items.length-1];};
+  const scorW=p=>p.position==='FWD'?(p.score||5)*3:p.position==='MDF'?(p.mdfAtkScore||5)*1.2:p.position==='DEF'?0.4:0;
+  const astW=(p,sid)=>p.id===sid?0:p.position==='MDF'?(p.mdfAtkScore||5)*2.5:p.position==='FWD'?(p.score||5):p.position==='DEF'?0.3:0;
+  const mnt=()=>Math.floor(Math.random()*90)+1;
+  const events=[];
+  const genGoals=(n,players,team)=>{
+    const out=players.filter(p=>p.position!=='GK');if(!out.length)return;
+    const topFWD=[...out].filter(p=>p.position==='FWD').sort((a,b)=>(b.score||0)-(a.score||0))[0]||out[0];
+    for(let i=0;i<n;i++){
+      const isPen=Math.random()<0.15;
+      const scorer=isPen?topFWD:wPick(out,scorW);
+      const astCands=players.filter(p=>p.id!==scorer.id);
+      const assist=Math.random()<0.78&&astCands.length?wPick(astCands,p=>astW(p,scorer.id)):null;
+      events.push({team,type:'goal',player:scorer,assist,minute:mnt(),isPen});
+    }
+  };
+  const genCards=(players,team)=>players.forEach(p=>{
+    const r=Math.random(),yc=p.position==='DEF'?0.13:p.position==='MDF'?0.10:p.position==='FWD'?0.07:0.02;
+    if(r<0.025)events.push({team,type:'red',player:p,minute:mnt()});
+    else if(r<yc)events.push({team,type:'yellow',player:p,minute:mnt()});
+  });
+  genGoals(hGoals,hPlayers,'home');genGoals(aGoals,aPlayers,'away');
+  genCards(hPlayers,'home');genCards(aPlayers,'away');
+  events.sort((a,b)=>a.minute-b.minute);
+  return{hGoals,aGoals,events};
+}
+
+function MatchSimPanel({fixture,home,away,fixtures,sim,onSimulate,onApply}){
+  const ico=t=>t==='goal'?'⚽':t==='yellow'?'🟡':'🟥';
+  const shortName=t=>t.shortName||t.name;
+  return(
+    <div style={{borderTop:`1px solid ${C.border}`,padding:"14px",background:C.bg}}>
+      <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:C.muted,textTransform:"uppercase",textAlign:"center",marginBottom:12}}>Match Simulator</div>
+      {!sim?(
+        <div style={{textAlign:"center"}}><Btn onClick={onSimulate} variant="primary">⚡ Simulate Match</Btn></div>
+      ):(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:6,marginBottom:14}}>
+            <div style={{textAlign:"right",fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:C.text,letterSpacing:.5}}>{shortName(home)}</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:42,color:C.gold,letterSpacing:3,textAlign:"center",lineHeight:1,padding:"0 10px"}}>{sim.hGoals}–{sim.aGoals}</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:C.text,letterSpacing:.5}}>{shortName(away)}</div>
+          </div>
+          {sim.events.length>0?(
+            <div style={{marginBottom:14,borderTop:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"10px 0"}}>
+              {sim.events.map((e,i)=>{
+                const isH=e.team==='home';
+                const main=e.type==='goal'?`${e.player.name}${e.isPen?' (pen)':''}`:`${e.player.name}`;
+                const ast=e.assist?`↗ ${e.assist.name}`:'';
+                return(
+                  <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 32px 1fr",gap:2,marginBottom:5,alignItems:"start"}}>
+                    {isH?(
+                      <div style={{textAlign:"right",paddingRight:4}}>
+                        <div style={{fontSize:11,color:C.text,fontWeight:600}}>{main} {ico(e.type)}</div>
+                        {ast&&<div style={{fontSize:9,color:C.muted}}>{ast}</div>}
+                      </div>
+                    ):<div/>}
+                    <div style={{textAlign:"center",fontSize:9,color:C.muted,fontWeight:700,paddingTop:2}}>{e.minute}'</div>
+                    {!isH?(
+                      <div style={{paddingLeft:4}}>
+                        <div style={{fontSize:11,color:C.text,fontWeight:600}}>{ico(e.type)} {main}</div>
+                        {ast&&<div style={{fontSize:9,color:C.muted,paddingLeft:14}}>{ast}</div>}
+                      </div>
+                    ):<div/>}
+                  </div>
+                );
+              })}
+            </div>
+          ):(
+            <div style={{fontSize:11,color:C.muted,textAlign:"center",fontStyle:"italic",marginBottom:14}}>No goals or bookings.</div>
+          )}
+          <div style={{display:"flex",gap:8,justifyContent:"center"}}>
+            <Btn onClick={onSimulate} variant="secondary" small>Re-simulate</Btn>
+            {onApply&&<Btn onClick={onApply} variant="success" small>Apply Result ✓</Btn>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function calcOdds(home,away){
   const{hxg,axg}=predictMatch(home,away);
   const diff=hxg-axg;
@@ -423,9 +512,10 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
   );
 }
 
-function FixturesTab({teams,fixtures,onPlayerClick,activeMatchWeek}){
+function FixturesTab({teams,fixtures,onPlayerClick,activeMatchWeek,onApplySim}){
   const[filter,setFilter]=useState("all");
   const[expandedId,setExpandedId]=useState(null);
+  const[simResults,setSimResults]=useState({});
   const currentMW=activeMatchWeek;
   const shown=fixtures.filter(f=>filter==="all"?true:filter==="played"?f.played:!f.played);
   const grouped=shown.reduce((acc,f)=>{const k=f.matchWeek!=null?`__mw__${f.matchWeek}`:f.date||"TBC";if(!acc[k])acc[k]=[];acc[k].push(f);return acc;},{});
@@ -459,12 +549,22 @@ function FixturesTab({teams,fixtures,onPlayerClick,activeMatchWeek}){
                     <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:C.text,letterSpacing:.5}}>{a.name}</span>
                   </div>
                 </div>
-                {expanded&&!f.played&&(f.matchWeek==null||f.matchWeek===currentMW)&&(
-                  <div style={{borderTop:`1px solid ${C.border}`,padding:"14px 14px",background:C.surface}}>
-                    <div style={{fontSize:13,fontWeight:800,letterSpacing:2,color:C.text,textTransform:"uppercase",textAlign:"center",marginBottom:14}}>Predicted Lineups</div>
-                    <FieldLineup home={h} away={a} fixtures={fixtures} onPlayerClick={onPlayerClick}/>
-                    <div style={{fontSize:10,color:C.muted,marginTop:8,textAlign:"center"}}>Based on form & availability</div>
-                  </div>
+                {expanded&&!f.played&&(
+                  <>
+                    {(f.matchWeek==null||f.matchWeek===currentMW)&&(
+                      <div style={{borderTop:`1px solid ${C.border}`,padding:"14px 14px",background:C.surface}}>
+                        <div style={{fontSize:13,fontWeight:800,letterSpacing:2,color:C.text,textTransform:"uppercase",textAlign:"center",marginBottom:14}}>Predicted Lineups</div>
+                        <FieldLineup home={h} away={a} fixtures={fixtures} onPlayerClick={onPlayerClick}/>
+                        <div style={{fontSize:10,color:C.muted,marginTop:8,textAlign:"center"}}>Based on form & availability</div>
+                      </div>
+                    )}
+                    <MatchSimPanel
+                      fixture={f} home={h} away={a} fixtures={fixtures}
+                      sim={simResults[f.id]||null}
+                      onSimulate={()=>setSimResults(p=>({...p,[f.id]:simulateMatch(h,a,fixtures)}))}
+                      onApply={onApplySim&&simResults[f.id]?()=>onApplySim(f,simResults[f.id],h,a):null}
+                    />
+                  </>
                 )}
                 {expanded&&f.played&&(()=>{
                   const stats=f.playerStats||[];
@@ -1628,7 +1728,16 @@ function App(){
         </div>
       </div>
       <div style={{maxWidth:720,margin:"0 auto",padding:"24px 16px 100px"}}>
-        {tab==="fixtures"&&<FixturesTab teams={teams} fixtures={fixtures} onPlayerClick={setProfilePlayer} activeMatchWeek={activeMatchWeek}/>}
+        {tab==="fixtures"&&<FixturesTab teams={teams} fixtures={fixtures} onPlayerClick={setProfilePlayer} activeMatchWeek={activeMatchWeek} onApplySim={(f,sim,h,a)=>{
+          const sm={};
+          const upd=(pid,tid,field,val)=>{if(!sm[pid])sm[pid]={playerId:pid,teamId:tid,goals:0,penGoals:0,assists:0,yellowCards:0,redCard:false,cleanSheet:false,rating:0};sm[pid][field]=typeof val==='boolean'?val:(sm[pid][field]||0)+val;};
+          sim.events.forEach(e=>{const tid=e.team==='home'?h.id:a.id;if(e.type==='goal'){upd(e.player.id,tid,'goals',1);if(e.isPen)upd(e.player.id,tid,'penGoals',1);if(e.assist)upd(e.assist.id,tid,'assists',1);}else if(e.type==='yellow')upd(e.player.id,tid,'yellowCards',1);else if(e.type==='red')upd(e.player.id,tid,'redCard',true);});
+          const hGK=h.players.find(p=>p.position==='GK');const aGK=a.players.find(p=>p.position==='GK');
+          if(hGK&&sim.aGoals===0)upd(hGK.id,h.id,'cleanSheet',true);
+          if(aGK&&sim.hGoals===0)upd(aGK.id,a.id,'cleanSheet',true);
+          const nf={...f,played:true,homeScore:sim.hGoals,awayScore:sim.aGoals,playerStats:Object.values(sm)};
+          setFixtures(fs=>fs.map(x=>x.id===nf.id?nf:x));syncFixture(nf);showToast('Result applied!');
+        }}/>}
         {tab==="table"   &&<TableTab teams={teams} fixtures={fixtures}/>}
         {tab==="stats"   &&<StatsTab teams={teams} fixtures={fixtures}/>}
         {tab==="ratings" &&<RatingsTab teams={teams}/>}
