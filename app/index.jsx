@@ -24,7 +24,7 @@ const ROLES=[
   {id:'fkTaker',label:'FK Taker',short:'FK',color:'#A855F7'},
 ];
 
-const makeTeam=id=>({id,name:"",shortName:"",color:"#3B82F6",crest:null,players:[],formation:"2-2-1"});
+const makeTeam=id=>({id,name:"",shortName:"",color:"#3B82F6",crest:null,players:[],formation:"2-2-1",budget:0});
 const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,injured:false,suspended:false,wide:false,altPosition:null,roles:[]});
 const makeFixture=()=>({id:String(Date.now()+Math.random()),homeId:null,awayId:null,date:"",homeScore:null,awayScore:null,played:false,playerStats:[],matchWeek:null});
 
@@ -1027,7 +1027,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
             {teams.map(t=>(
               <div key={t.id} onClick={()=>setEditTeam({...t,players:t.players.map(p=>({...p}))})} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px",cursor:"pointer",display:"flex",alignItems:"center",gap:10}}>
                 <TeamBadge color={t.name?t.color:C.border} crest={t.name?t.crest:null} size={32}/>
-                <div><div style={{fontWeight:600,fontSize:14,color:t.name?C.text:C.muted}}>{t.name||`Team ${t.id}`}</div><div style={{fontSize:11,color:C.muted}}>{t.players.length}/8{t.shortName?` · ${t.shortName}`:""}</div></div>
+                <div><div style={{fontWeight:600,fontSize:14,color:t.name?C.text:C.muted}}>{t.name||`Team ${t.id}`}</div><div style={{fontSize:11,color:C.muted}}>{t.players.length}/8{t.shortName?` · ${t.shortName}`:""}{t.budget?` · £${t.budget}M`:""}</div></div>
               </div>
             ))}
           </div>
@@ -1042,6 +1042,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
             <div><div style={{fontSize:11,color:C.muted,marginBottom:4}}>Full Name</div><Inp value={editTeam.name} onChange={v=>setEditTeam({...editTeam,name:v})} placeholder="e.g. City FC"/></div>
             <div><div style={{fontSize:11,color:C.muted,marginBottom:4}}>Short (3 letters)</div><Inp value={editTeam.shortName} onChange={v=>setEditTeam({...editTeam,shortName:v.toUpperCase().slice(0,3)})} placeholder="CTY"/></div>
+            <div style={{gridColumn:"1/-1"}}><div style={{fontSize:11,color:C.muted,marginBottom:4}}>Transfer Budget (£M)</div><Inp type="number" min="0" value={editTeam.budget??""} placeholder="e.g. 150" onChange={v=>setEditTeam({...editTeam,budget:v===''?0:+v})}/></div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
             <div>
