@@ -1375,7 +1375,6 @@ function App(){
   const[tab,setTab]=useState("fixtures");
   const[toast,setToast]=useState(null);
   const[loaded,setLoaded]=useState(false);
-  const[manageUnlocked,setManageUnlocked]=useState(()=>sessionStorage.getItem('bmls_manage')==='1');
   const[showManagePrompt,setShowManagePrompt]=useState(false);
   const[teams,setTeams]=useState([]);
   const[fixtures,setFixtures]=useState([]);
@@ -1436,7 +1435,7 @@ function App(){
     <div style={{minHeight:"100vh",background:C.bg,fontFamily:"'DM Sans',sans-serif",color:C.text}}>
       {toast&&<div style={{position:"fixed",top:16,left:"50%",transform:"translateX(-50%)",background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 20px",fontSize:13,fontWeight:600,color:C.text,zIndex:999,boxShadow:"0 4px 20px #00000066",whiteSpace:"nowrap"}}>{toast}</div>}
       {profilePlayer&&<PlayerProfileModal data={profilePlayer} fixtures={fixtures} onClose={()=>setProfilePlayer(null)}/>}
-      {showManagePrompt&&<ManagePasswordModal onSuccess={()=>{setManageUnlocked(true);sessionStorage.setItem('bmls_manage','1');setShowManagePrompt(false);setTab('manage');}} onCancel={()=>setShowManagePrompt(false)}/>}
+      {showManagePrompt&&<ManagePasswordModal onSuccess={()=>{setShowManagePrompt(false);setTab('manage');}} onCancel={()=>setShowManagePrompt(false)}/>}
       <div style={{background:C.surface,borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100}}>
         <div style={{maxWidth:720,margin:"0 auto",padding:"0 16px"}}>
           <div style={{paddingTop:16,display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
@@ -1447,7 +1446,7 @@ function App(){
             </div>
           </div>
           <div style={{display:"flex",gap:0,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-            {TABS.map(t=><button key={t.id} onClick={()=>{if(t.id==='manage'&&!manageUnlocked){setShowManagePrompt(true);}else{setTab(t.id);}}} style={{background:"transparent",border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600,color:tab===t.id?C.accent:C.sub,padding:"8px 11px",whiteSpace:"nowrap",borderBottom:tab===t.id?`2px solid ${C.accent}`:"2px solid transparent",marginBottom:-1}}>{t.label}</button>)}
+            {TABS.map(t=><button key={t.id} onClick={()=>{if(t.id==='manage'){setShowManagePrompt(true);}else{setTab(t.id);}}} style={{background:"transparent",border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600,color:tab===t.id?C.accent:C.sub,padding:"8px 11px",whiteSpace:"nowrap",borderBottom:tab===t.id?`2px solid ${C.accent}`:"2px solid transparent",marginBottom:-1}}>{t.label}</button>)}
           </div>
         </div>
       </div>
