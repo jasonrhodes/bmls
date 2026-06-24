@@ -158,7 +158,8 @@ function predictMatch(home,away){
   const h=lineupRatings(home),a=lineupRatings(away);
   const hxg=+((1.4*(h.atk+0.4)/Math.max(a.def,0.5))*0.85).toFixed(1);
   const axg=+((1.4*a.atk/Math.max(h.def,0.5))*0.85).toFixed(1);
-  return{hxg,axg,hGoals:Math.round(hxg),aGoals:Math.round(axg)};
+  const xgToGoals=xg=>Math.max(0,Math.round(xg*1.18-0.12));
+  return{hxg,axg,hGoals:xgToGoals(hxg),aGoals:xgToGoals(axg)};
 }
 
 function calcOdds(home,away){
