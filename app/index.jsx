@@ -1418,32 +1418,35 @@ function generateSocial(a){
   const rng=n=>((seed*1013+n*1009)>>>0)%100;
   const likes=6+rng(1)%55+rng(2)%35;
   const FANS=['Dave','BigLeagueFan','FootyMad','TacticsGuy','MatchdayMike','TopBin99','TheTactician','LeagueWatcher','PressBoxPaul','TheGaffer','Linesman77','SilverStreet','Benchwatcher','Ultras99'];
-  const fan=n=>FANS[(seed+n*7)%FANS.length];
+  const fanIdx=n=>(seed+n*7)%FANS.length;
+  const fan=n=>FANS[fanIdx(n)];
+  const fanDiff=(n,exclude)=>{const idx=fanIdx(n);return FANS[idx===exclude?(idx+1)%FANS.length:idx];};
   const POOLS={
-    'Transfer':['Wild one this, never saw it coming','Both clubs got something here I reckon','Big move — will be interesting to see how it pans out','Came out of nowhere that one','Risky move if you ask me','Good business for both sides'],
-    'Match Report':['Fully deserved that result','Could have been even more goals honestly','That performance was embarrassing tbh','Manager needs to explain that one','Gritty win but three points is three points','Did not see that coming at all'],
-    'Preview':["Can't wait for this one","Going to be a tight one","Home side has it easy here imo","No idea who wins this, genuine coin flip","One to watch for sure","Both teams will go for it"],
-    'Pundit Debate':["These two argue about everything lol","Second one has a point to be fair","Both completely wrong as usual","Classic pundit nonsense right here","This debate happens every single week","I actually agree with the first take here"],
-    'Form Guide':['You love to see it','That run is alarming, something has to change','Had a feeling they were coming good',"Won't last, they always drop off eventually"],
-    'Table Update':['Top of the league, get in!','Long way to go yet, anything can happen','Deserved every single point','Just wait till the big games come around'],
-    'Golden Boot':['Lethal. Pure quality this season','What a campaign they are having','Nobody is stopping that run','Dark horse for the award if you ask me'],
-    'Player Watch':['Best player in the league, no debate','Consistent as they come, week in week out','Cannot argue with those numbers at all','Absolute class, simple as'],
-    'Goalkeeper Watch':['Wall. An absolute wall.','GK of the season already and it is not close','Clean sheets win leagues, simple as that','Unbelievable this season, nothing gets past them'],
-    'Power Rankings':['These seem about right to me','Would argue with one or two of these','Top team by a mile honestly','Interesting to see how this looks after a few more weeks'],
-    'Betting':['Banker of the week for me that','Never back an odds-on favourite','Easy money if you believe the model','Risky at that price though'],
-    'Analysis':['Fair analysis this','Stats never lie in the end','Would disagree with parts but fair enough'],
+    'Transfer':['Wild one this 👀 never saw it coming','Both clubs got something here I reckon 🤝','Big move — will be interesting to see how it pans out 👏','Came out of nowhere that one 😳','Risky move if you ask me 🤔','Good business for both sides tbh ✅'],
+    'Match Report':['Fully deserved that result 💪','Could have been even more goals honestly 🔥','That performance was embarrassing 😬 need to do better','Manager needs to explain that one 😤','Gritty win but three points is three points 🙌','Did not see that coming at all 😂'],
+    'Preview':["Can't wait for this one 🍿","Going to be a tight one ⚔️","Home side has it easy here imo 😅","No idea who wins this, genuine coin flip 🪙","One to watch for sure 👁️","Both teams will go for it 🔥"],
+    'Pundit Debate':["These two argue about everything lol 😂","Second one has a point to be fair 🤷","Both completely wrong as usual 💀","Classic pundit nonsense right here 🙄","This debate happens every single week 😴","I actually agree with the first take here ✅"],
+    'Form Guide':['You love to see it 🔥','That run is alarming, something has to change 📉','Had a feeling they were coming good 😤',"Won't last, they always drop off eventually 💀"],
+    'Table Update':['Top of the league, get in! 🏆','Long way to go yet, anything can happen 👀','Deserved every single point 💪','Just wait till the big games come around 😏'],
+    'Golden Boot':['Lethal. Pure quality this season 🎯','What a campaign they are having 🔥','Nobody is stopping that run 😤','Dark horse for the award if you ask me 👀'],
+    'Player Watch':['Best player in the league, no debate 🐐','Consistent as they come, week in week out 💎','Cannot argue with those numbers at all 📊','Absolute class, simple as ✨'],
+    'Goalkeeper Watch':['Wall. An absolute wall. 🧱','GK of the season already and it is not close 🧤','Clean sheets win leagues, simple as that 🔒','Unbelievable this season, nothing gets past them 😤'],
+    'Power Rankings':['These seem about right to me 📊','Would argue with one or two of these 🤔','Top team by a mile honestly 🏆','Interesting to see how this changes week to week 👀'],
+    'Betting':['Banker of the week for me that 💰','Never back an odds-on favourite 😅','Easy money if you believe the model 🤑','Risky at that price though 👀'],
+    'Analysis':['Fair analysis this 📊','Stats never lie in the end 💯','Would disagree with parts but fair enough 🤷'],
   };
-  const pool=POOLS[a.tag]||['Interesting one this','Good read','Fair enough','Thoughts on this?'];
-  const REPLIES=['Exactly this','Disagree completely','You might actually have a point','Bit harsh that','Fair play','Facts though','100% agree','Nah come on'];
+  const pool=POOLS[a.tag]||['Interesting one this 👀','Good read 📖','Fair enough 🤷','Thoughts? 💬'];
+  const REPLIES=['Exactly this 💯','Disagree completely 😭','You might actually have a point 🤔','Bit harsh that 😅','Fair play 👏','Facts though 🎯','100% agree ✅','Nah come on 😂','This is what I said 🙌','Could not have put it better 👆'];
   const n=2+(rng(3)<50?1:0);
   const comments=[];
   for(let i=0;i<n;i++){
     const minsAgo=rng(i*7+4)*20+8;
+    const authorIdx=fanIdx(i*3);
     comments.push({
-      id:String(i),name:fan(i*3),
+      id:String(i),name:FANS[authorIdx],
       text:pool[(seed+i*13)%pool.length],
       time:new Date(Date.now()-minsAgo*60000).toISOString(),
-      reply:rng(i*11+5)<45?{name:fan(i*5+2),text:REPLIES[rng(i*9+1)%REPLIES.length],time:new Date(Date.now()-(minsAgo-4)*60000).toISOString()}:null,
+      reply:rng(i*11+5)<45?{name:fanDiff(i*5+2,authorIdx),text:REPLIES[rng(i*9+1)%REPLIES.length],time:new Date(Date.now()-(minsAgo-4)*60000).toISOString()}:null,
     });
   }
   return{likes,comments};
