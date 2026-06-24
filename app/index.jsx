@@ -545,7 +545,7 @@ function OddsTab({teams,fixtures}){
   );
 }
 
-function ManageTab({teams,setTeams,fixtures,setFixtures,onSaveAll,lastSaved,onExport,onImport}){
+function ManageTab({teams,setTeams,fixtures,setFixtures,onExport,onImport}){
   const[view,setView]=useState("teams");
   const[editTeam,setEditTeam]=useState(null);
   const[editFix,setEditFix]=useState(null);
@@ -713,21 +713,12 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,onSaveAll,lastSaved,onEx
         );
       })()}
       {!editTeam&&!editFix&&(
-        <div style={{marginTop:32,borderTop:`1px solid ${C.border}`,paddingTop:20,display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div>
-              <div style={{fontSize:13,color:C.text,fontWeight:600}}>Full Sync</div>
-              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{lastSaved?`Last synced ${lastSaved}`:"Not synced this session"}</div>
-            </div>
-            <Btn onClick={onSaveAll} variant="success">☁ Sync All</Btn>
-          </div>
-          <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12}}>
-            <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Backup or restore your data as a JSON file.</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <Btn onClick={onExport} variant="export">📤 Export</Btn>
-              <Btn onClick={()=>importRef.current.click()} variant="secondary">📥 Import</Btn>
-              <input ref={importRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>onImport(ev.target.result);r.readAsText(f);}e.target.value="";}}/>
-            </div>
+        <div style={{marginTop:32,borderTop:`1px solid ${C.border}`,paddingTop:20}}>
+          <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Backup or restore your data as a JSON file.</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <Btn onClick={onExport} variant="export">📤 Export</Btn>
+            <Btn onClick={()=>importRef.current.click()} variant="secondary">📥 Import</Btn>
+            <input ref={importRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=ev=>onImport(ev.target.result);r.readAsText(f);}e.target.value="";}}/>
           </div>
         </div>
       )}
@@ -747,7 +738,6 @@ const TABS=[
 
 function App(){
   const[tab,setTab]=useState("fixtures");
-  const[lastSaved,setLastSaved]=useState(null);
   const[toast,setToast]=useState(null);
   const[loaded,setLoaded]=useState(false);
   const[teams,setTeams]=useState([]);
@@ -762,15 +752,6 @@ function App(){
   },[]);
 
   const showToast=msg=>{setToast(msg);setTimeout(()=>setToast(null),2500);};
-
-  const handleSaveAll=useCallback(async()=>{
-    try{
-      await syncTeams(teams);
-      await Promise.all(fixtures.map(f=>syncFixture(f)));
-      setLastSaved(new Date().toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}));
-      showToast("✅ Synced!");
-    }catch{showToast("❌ Sync failed");}
-  },[teams,fixtures]);
 
   const handleExport=useCallback(()=>{
     const data=JSON.stringify({teams,fixtures},null,2);
@@ -818,7 +799,6 @@ function App(){
               <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:3,color:C.white,lineHeight:1}}>BMLS</div>
               <div style={{fontSize:10,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginTop:1}}>{named}/12 Teams · {played} Results</div>
             </div>
-            <button onClick={handleSaveAll} style={{background:`${C.green}22`,color:C.green,border:`1px solid ${C.green}44`,borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",flexShrink:0}}>☁ Sync</button>
           </div>
           <div style={{display:"flex",gap:0,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
             {TABS.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={{background:"transparent",border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600,color:tab===t.id?C.accent:C.sub,padding:"8px 11px",whiteSpace:"nowrap",borderBottom:tab===t.id?`2px solid ${C.accent}`:"2px solid transparent",marginBottom:-1}}>{t.label}</button>)}
@@ -832,7 +812,7 @@ function App(){
         {tab==="ratings" &&<RatingsTab teams={teams}/>}
         {tab==="squads"  &&<SquadsTab teams={teams} setTeams={setTeams}/>}
         {tab==="odds"    &&<OddsTab teams={teams} fixtures={fixtures}/>}
-        {tab==="manage"  &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} onSaveAll={handleSaveAll} lastSaved={lastSaved} onExport={handleExport} onImport={handleImport}/>}
+        {tab==="manage"  &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} onExport={handleExport} onImport={handleImport}/>}
       </div>
     </div>
   );
