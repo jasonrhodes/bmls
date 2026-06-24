@@ -55,9 +55,16 @@ async function loadState(){
     const r=await fetch('/api/state');if(!r.ok)return null;
     const data=await r.json();
     const all=data.fixtures||[];
-    return{teams:data.teams,fixtures:all.filter(f=>f.type!=='transfer'),transfers:all.filter(f=>f.type==='transfer')};
+    const meta=all.find(f=>f.id==='season_meta');
+    return{
+      teams:data.teams,
+      fixtures:all.filter(f=>!f.type),
+      transfers:all.filter(f=>f.type==='transfer'),
+      activeMatchWeek:meta?.activeMatchWeek||1,
+    };
   }catch{return null;}
 }
+async function syncMeta(amw){try{await fetch('/api/fixture/season_meta',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'season_meta',type:'meta',activeMatchWeek:amw})});}catch(e){console.error('sync meta:',e);}}
 async function syncTeams(teams){try{await fetch('/api/teams',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(teams)});}catch(e){console.error('sync teams:',e);}}
 async function syncFixture(f){try{await fetch(`/api/fixture/${f.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});}catch(e){console.error('sync fixture:',e);}}
 async function deleteFixture(id){try{await fetch(`/api/fixture/${id}`,{method:'DELETE'});}catch(e){console.error('delete fixture:',e);}}
@@ -395,10 +402,10 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
   );
 }
 
-function FixturesTab({teams,fixtures,onPlayerClick}){
+function FixturesTab({teams,fixtures,onPlayerClick,activeMatchWeek}){
   const[filter,setFilter]=useState("all");
   const[expandedId,setExpandedId]=useState(null);
-  const currentMW=useMemo(()=>currentMatchWeek(fixtures),[fixtures]);
+  const currentMW=activeMatchWeek;
   const shown=fixtures.filter(f=>filter==="all"?true:filter==="played"?f.played:!f.played);
   const grouped=shown.reduce((acc,f)=>{const k=f.matchWeek!=null?`__mw__${f.matchWeek}`:f.date||"TBC";if(!acc[k])acc[k]=[];acc[k].push(f);return acc;},{});
   if(fixtures.length===0)return<Empty icon="📅" msg="No fixtures yet." hint="Go to Manage → Fixtures to add some."/>;
@@ -696,10 +703,9 @@ function SquadsTab({teams,setTeams}){
   );
 }
 
-function OddsTab({teams,fixtures}){
+function OddsTab({teams,fixtures,activeMatchWeek}){
   const hasMW=fixtures.some(f=>f.matchWeek!=null);
-  const currentMW=hasMW?currentMatchWeek(fixtures):null;
-  const upcoming=fixtures.filter(f=>!f.played&&f.homeId&&f.awayId&&(!hasMW||f.matchWeek===currentMW));
+  const upcoming=fixtures.filter(f=>!f.played&&f.homeId&&f.awayId&&(!hasMW||f.matchWeek===activeMatchWeek));
   if(upcoming.length===0)return<Empty icon="🎲" msg="No upcoming fixtures." hint="Add fixtures in Manage → Fixtures."/>;
   return(
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -800,7 +806,7 @@ function TransfersTab({transfers,teams}){
   );
 }
 
-function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,onExport,onImport,onToast}){
+function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,activeMatchWeek,setActiveMatchWeek,onExport,onImport,onToast}){
   const[view,setView]=useState("teams");
   const[editTeam,setEditTeam]=useState(null);
   const[editFix,setEditFix]=useState(null);
@@ -865,7 +871,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,o
   return(
     <div>
       <div style={{display:"flex",gap:8,marginBottom:24}}>
-        {["teams","fixtures","transfers"].map(v=>(
+        {["teams","fixtures","transfers","season"].map(v=>(
           <button key={v} onClick={()=>{setView(v);setEditTeam(null);setEditFix(null);}} style={{background:view===v?C.accent:C.card,color:view===v?C.white:C.sub,border:"none",borderRadius:6,padding:"8px 18px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",textTransform:"capitalize"}}>{v}</button>
         ))}
       </div>
@@ -1090,7 +1096,39 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,o
           )}
         </div>
       )}
-      {!editTeam&&!editFix&&view!=="transfers"&&(
+      {view==="season"&&(()=>{
+        const maxMW=fixtures.reduce((m,f)=>f.matchWeek?Math.max(m,f.matchWeek):m,1);
+        const mwFixtures=fixtures.filter(f=>f.matchWeek===activeMatchWeek);
+        const played=mwFixtures.filter(f=>f.played).length;
+        const total=mwFixtures.length;
+        const canAdvance=activeMatchWeek<maxMW;
+        const advanceTo=activeMatchWeek+1;
+        return(
+          <div>
+            <SLabel>Current Match Week</SLabel>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"20px",marginBottom:20,textAlign:"center"}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:56,color:C.accent,lineHeight:1}}>{activeMatchWeek}</div>
+              <div style={{fontSize:11,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginTop:4}}>Match Week</div>
+              {total>0&&<div style={{fontSize:12,color:C.sub,marginTop:10}}>{played}/{total} results entered this week</div>}
+              {played<total&&total>0&&<div style={{fontSize:11,color:C.gold,marginTop:4}}>{total-played} game{total-played!==1?'s':''} still to be played</div>}
+            </div>
+            {canAdvance?(
+              <div>
+                <div style={{fontSize:12,color:C.sub,marginBottom:14,lineHeight:1.5}}>Advancing locks in new predicted lineups, refreshes the News feed, and updates Odds for Match Week {advanceTo}. You can still enter results from the current week after advancing.</div>
+                <Btn onClick={()=>{setActiveMatchWeek(advanceTo);syncMeta(advanceTo);onToast(`Advanced to Match Week ${advanceTo}`);}} variant="success">Advance to Match Week {advanceTo} →</Btn>
+              </div>
+            ):(
+              <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>You are on the final match week of the season.</div>
+            )}
+            {activeMatchWeek>1&&(
+              <div style={{marginTop:16}}>
+                <button onClick={()=>{const p=activeMatchWeek-1;setActiveMatchWeek(p);syncMeta(p);onToast(`Moved back to Match Week ${p}`);}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",padding:0,fontFamily:"'DM Sans',sans-serif",textDecoration:"underline"}}>← Go back to Match Week {activeMatchWeek-1}</button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+      {!editTeam&&!editFix&&view!=="transfers"&&view!=="season"&&(
         <div style={{marginTop:32,borderTop:`1px solid ${C.border}`,paddingTop:20}}>
           <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Backup or restore your data as a JSON file.</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1104,14 +1142,16 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,o
   );
 }
 
-function generateArticles(teams,fixtures,transfers){
+function generateArticles(teams,fixtures,transfers,activeMW){
   const articles=[];
   const named=teams.filter(t=>t.name);
   if(named.length===0)return[];
   const pick=(arr,seed)=>arr[Math.abs(seed)%arr.length];
-  const currentMW=currentMatchWeek(fixtures);
-  const pStats=computePlayerStats(teams,fixtures);
-  const table=computeTable(teams,fixtures);
+  const prevMW=activeMW>1?activeMW-1:null;
+  // stats scoped to games played before the active MW
+  const playedSoFar=fixtures.filter(f=>f.played&&(f.matchWeek==null||f.matchWeek<activeMW));
+  const pStats=computePlayerStats(teams,playedSoFar);
+  const table=computeTable(teams,playedSoFar);
 
   // transfers
   [...transfers].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,4).forEach(t=>{
@@ -1131,10 +1171,10 @@ function generateArticles(teams,fixtures,transfers){
     });
   });
 
-  // match reports
-  [...fixtures.filter(f=>f.played&&f.homeId&&f.awayId)]
+  // match reports — only previous MW (the one just completed)
+  [...fixtures.filter(f=>f.played&&f.homeId&&f.awayId&&(prevMW==null||f.matchWeek===prevMW))]
     .sort((a,b)=>(b.matchWeek||0)-(a.matchWeek||0)||(b.date||'').localeCompare(a.date||''))
-    .slice(0,4).forEach(f=>{
+    .slice(0,6).forEach(f=>{
       const home=named.find(t=>t.id===f.homeId),away=named.find(t=>t.id===f.awayId);
       if(!home||!away)return;
       const hWin=f.homeScore>f.awayScore,draw=f.homeScore===f.awayScore;
@@ -1164,9 +1204,9 @@ function generateArticles(teams,fixtures,transfers){
       articles.push({tag:'Match Report',color:C.gold,headline,body,date:f.date||`MW${f.matchWeek}`,priority:2});
     });
 
-  // fixture previews
-  if(currentMW){
-    fixtures.filter(f=>f.matchWeek===currentMW&&!f.played&&f.homeId&&f.awayId).slice(0,4).forEach(f=>{
+  // fixture previews — active MW only
+  if(activeMW){
+    fixtures.filter(f=>f.matchWeek===activeMW&&!f.played&&f.homeId&&f.awayId).slice(0,4).forEach(f=>{
       const home=named.find(t=>t.id===f.homeId),away=named.find(t=>t.id===f.awayId);
       if(!home||!away)return;
       const o=calcOdds(home,away);
@@ -1177,15 +1217,15 @@ function generateArticles(teams,fixtures,transfers){
       let headline,body;
       if(favP>=70){
         headline=pick([`${fav.name} overwhelming favorites — can ${dog.name} defy the odds?`,`${dog.name} face a mountain to climb against in-form ${fav.name}`],seed);
-        body=`${fav.name} head into Match Week ${currentMW} as firm favorites with a ${favP}% win probability. Analysts are predicting a ${pred.hGoals}-${pred.aGoals} scoreline and it is hard to argue with the models. ${dog.name} will need a performance of their lives to come away with anything.`;
+        body=`${fav.name} head into Match Week ${activeMW} as firm favorites with a ${favP}% win probability. Analysts are predicting a ${pred.hGoals}-${pred.aGoals} scoreline and it is hard to argue with the models. ${dog.name} will need a performance of their lives to come away with anything.`;
       } else if(favP>=57){
-        headline=pick([`${fav.name} slight edge over ${dog.name} in Match Week ${currentMW} clash`,`${home.name} vs ${away.name}: Fine margins expected`],seed);
-        body=`${fav.name} are marginally favored (${favP}%) going into their Match Week ${currentMW} showdown with ${dog.name}. A ${pred.hGoals}-${pred.aGoals} scoreline is projected but this is far from a foregone conclusion. ${dog.name} are capable of causing problems and could easily steal a result.`;
+        headline=pick([`${fav.name} slight edge over ${dog.name} in Match Week ${activeMW} clash`,`${home.name} vs ${away.name}: Fine margins expected`],seed);
+        body=`${fav.name} are marginally favored (${favP}%) going into their Match Week ${activeMW} showdown with ${dog.name}. A ${pred.hGoals}-${pred.aGoals} scoreline is projected but this is far from a foregone conclusion. ${dog.name} are capable of causing problems and could easily steal a result.`;
       } else {
-        headline=`${home.name} vs ${away.name} — the most unpredictable fixture of Match Week ${currentMW}`;
-        body=`The bookmakers can barely separate ${home.name} and ${away.name} ahead of their Match Week ${currentMW} meeting. With win probabilities almost neck and neck, this could be the most enthralling game of the round. Neutrals will want to watch this one.`;
+        headline=`${home.name} vs ${away.name} — the most unpredictable fixture of Match Week ${activeMW}`;
+        body=`The bookmakers can barely separate ${home.name} and ${away.name} ahead of their Match Week ${activeMW} meeting. With win probabilities almost neck and neck, this could be the most enthralling game of the round. Neutrals will want to watch this one.`;
       }
-      articles.push({tag:'Preview',color:C.purple,headline,body,date:`Match Week ${currentMW}`,priority:3});
+      articles.push({tag:'Preview',color:C.purple,headline,body,date:`Match Week ${activeMW}`,priority:3});
     });
   }
 
@@ -1264,8 +1304,8 @@ function generateArticles(teams,fixtures,transfers){
   return articles.sort((a,b)=>a.priority-b.priority);
 }
 
-function NewsTab({teams,fixtures,transfers}){
-  const articles=useMemo(()=>generateArticles(teams,fixtures,transfers),[teams,fixtures,transfers]);
+function NewsTab({teams,fixtures,transfers,activeMatchWeek}){
+  const articles=useMemo(()=>generateArticles(teams,fixtures,transfers,activeMatchWeek),[teams,fixtures,transfers,activeMatchWeek]);
   const tagBg=color=>color+'22';
   if(articles.length===0)return<Empty icon="📰" msg="No news yet." hint="Add teams, fixtures and results to generate articles."/>;
   return(
@@ -1304,6 +1344,7 @@ function App(){
   const[teams,setTeams]=useState([]);
   const[fixtures,setFixtures]=useState([]);
   const[transfers,setTransfers]=useState([]);
+  const[activeMatchWeek,setActiveMatchWeek]=useState(1);
   const[profilePlayer,setProfilePlayer]=useState(null);
 
   useEffect(()=>{
@@ -1311,6 +1352,7 @@ function App(){
       setTeams(data?.teams?.length?data.teams:Array.from({length:12},(_,i)=>makeTeam(i+1)));
       setFixtures(data?.fixtures||[]);
       setTransfers(data?.transfers||[]);
+      setActiveMatchWeek(data?.activeMatchWeek||1);
       setLoaded(true);
     });
   },[]);
@@ -1364,7 +1406,7 @@ function App(){
             <div style={{width:40,height:40,borderRadius:10,background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>⚽</div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:3,color:C.white,lineHeight:1}}>BMLS</div>
-              <div style={{fontSize:10,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginTop:1}}>{named}/12 Teams · {played} Results</div>
+              <div style={{fontSize:10,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginTop:1}}>{named}/12 Teams · MW{activeMatchWeek} · {played} Results</div>
             </div>
           </div>
           <div style={{display:"flex",gap:0,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
@@ -1373,15 +1415,15 @@ function App(){
         </div>
       </div>
       <div style={{maxWidth:720,margin:"0 auto",padding:"24px 16px 100px"}}>
-        {tab==="fixtures"&&<FixturesTab teams={teams} fixtures={fixtures} onPlayerClick={setProfilePlayer}/>}
+        {tab==="fixtures"&&<FixturesTab teams={teams} fixtures={fixtures} onPlayerClick={setProfilePlayer} activeMatchWeek={activeMatchWeek}/>}
         {tab==="table"   &&<TableTab teams={teams} fixtures={fixtures}/>}
         {tab==="stats"   &&<StatsTab teams={teams} fixtures={fixtures}/>}
         {tab==="ratings" &&<RatingsTab teams={teams}/>}
         {tab==="squads"    &&<SquadsTab teams={teams} setTeams={setTeams}/>}
         {tab==="transfers" &&<TransfersTab transfers={transfers} teams={teams}/>}
-        {tab==="news"      &&<NewsTab teams={teams} fixtures={fixtures} transfers={transfers}/>}
-        {tab==="odds"      &&<OddsTab teams={teams} fixtures={fixtures}/>}
-        {tab==="manage"    &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} transfers={transfers} setTransfers={setTransfers} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
+        {tab==="news"      &&<NewsTab teams={teams} fixtures={fixtures} transfers={transfers} activeMatchWeek={activeMatchWeek}/>}
+        {tab==="odds"      &&<OddsTab teams={teams} fixtures={fixtures} activeMatchWeek={activeMatchWeek}/>}
+        {tab==="manage"    &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} transfers={transfers} setTransfers={setTransfers} activeMatchWeek={activeMatchWeek} setActiveMatchWeek={setActiveMatchWeek} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
       </div>
     </div>
   );
