@@ -22,10 +22,7 @@ jobs:
 
       - name: Write .env
         run: |
-          cat > /tmp/bmls.env << 'EOF'
-          DATABASE_URL=${{ secrets.DATABASE_URL }}
-          PORT=3006
-          EOF
+          printf 'DATABASE_URL=%s\nPORT=3006\n' '${{ secrets.DATABASE_URL }}' > /tmp/bmls.env
 
       - name: Deploy to droplet
         env:
@@ -40,4 +37,4 @@ jobs:
           rsync -az -e         "ssh $SSHOPTS" index.html     $USER@$HOST:~/bmls-api/
           rsync -az -e         "ssh $SSHOPTS" /tmp/bmls.env  $USER@$HOST:~/bmls-api/.env
 
-          ssh $SSHOPTS $USER@$HOST "pm2 restart bmls-api || pm2 start ~/bmls-api/server.js --name bmls-api && pm2 save"
+          ssh $SSHOPTS $USER@$HOST "pm2 delete bmls-api 2>/dev/null; pm2 start ~/bmls-api/server.js --name bmls-api --node-args '--env-file /home/jason/bmls-api/.env' && pm2 save"
