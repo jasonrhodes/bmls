@@ -2594,12 +2594,17 @@ function maybeDoCpuTrade(career,teams){
       const player=targets[0];
       const amount=Math.round(playerValue(player,seller)*(0.80+Math.random()*.25));
       if((buyer.careerBudget||0)<amount)continue;
-      // Swap: prefer same position as target, fall back to worst outfield
-      const samePos=buyer.players.filter(p=>p.position===player.position&&p.position!=='GK').sort((a,b)=>quality(a)-quality(b));
-      const anyOut=buyer.players.filter(p=>p.position!=='GK').sort((a,b)=>quality(a)-quality(b));
-      const swapPool=samePos.length>0?samePos:anyOut;
-      if(!swapPool.length)continue;
-      return{player,seller,buyer,amount,swapPlayer:swapPool[0]};
+      // Swap: send a player the SELLER wants (fills seller's weakness), not buyer's worst
+      const{atk:sAtk,def:sDef}=lineupRatings(seller);
+      const sellerNeedsAtk=sAtk<=sDef;
+      const swapPosPref=sellerNeedsAtk?['FWD','MDF']:['DEF','MDF'];
+      const swapCands=buyer.players.filter(p=>swapPosPref.includes(p.position)&&p.position!=='GK').sort((a,b)=>quality(b)-quality(a));
+      const anyOut=buyer.players.filter(p=>p.position!=='GK').sort((a,b)=>quality(b)-quality(a));
+      const pool=swapCands.length>0?swapCands:anyOut;
+      if(!pool.length)continue;
+      // Pick a decent player — not their star, not their worst; middle of the pool
+      const swapPlayer=pool[Math.min(Math.floor(pool.length/2),pool.length-1)];
+      return{player,seller,buyer,amount,swapPlayer};
     }
   }
   return null;
