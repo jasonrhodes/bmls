@@ -1,4 +1,4 @@
-const CACHE = 'bmls-v1'
+const CACHE = 'bmls-v2'
 
 const PRECACHE = [
   '/',
@@ -9,6 +9,7 @@ const PRECACHE = [
   '/fonts/bebas-neue-latin-ext.woff2',
   '/fonts/dm-sans-latin.woff2',
   '/fonts/dm-sans-latin-ext.woff2',
+  '/api/state',
 ]
 
 self.addEventListener('install', event => {
