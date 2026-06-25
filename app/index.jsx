@@ -1949,13 +1949,22 @@ function CreateTab({teams}){
 
 // ── Career Mode ──────────────────────────────────────────────────────────────
 
-function buildCareerLineup(team,starters,formation){
+const moodInfo=s=>{
+  if(s>=80)return{label:'Happy',color:C.green,mult:1.05};
+  if(s>=60)return{label:'Content',color:C.muted,mult:1.0};
+  if(s>=40)return{label:'Unsettled',color:'#F97316',mult:0.95};
+  return{label:'Unhappy',color:C.red,mult:0.90};
+};
+
+function buildCareerLineup(team,starters,formation,moods={}){
   const form=FORMATIONS.find(f=>f.id===formation)||FORMATIONS[0];
   const getP=(pos,idx)=>{
     const s=starters.find(s=>s.slotPos===pos&&s.slotIdx===idx);if(!s)return null;
     const p=team.players.find(p=>p.id===s.playerId);if(!p)return null;
     const oop=p.position!==pos;
-    return oop?{...p,score:Math.round((p.score||5)*.7),mdfAtkScore:Math.round((p.mdfAtkScore||5)*.7),mdfDefScore:Math.round((p.mdfDefScore||5)*.7),_oop:true}:p;
+    const mm=moodInfo(moods[p.id]??65).mult;
+    const mult=oop?0.7*mm:mm;
+    return{...p,score:Math.round((p.score||5)*mult),mdfAtkScore:Math.round((p.mdfAtkScore||5)*mult),mdfDefScore:Math.round((p.mdfDefScore||5)*mult),_oop:oop};
   };
   const gk=getP('GK',0);
   const defs=Array.from({length:form.def},(_,i)=>getP('DEF',i)).filter(Boolean);
@@ -2069,7 +2078,9 @@ function generateCareerFixtures(teamIds){
 function createCareer(myTeamId,allTeams){
   const teams=allTeams.map(t=>({...t,careerBudget:t.budget||100,players:t.players.map(p=>({...p,untouchable:false}))}));
   const active=teams.filter(t=>t.name&&t.players.length>0);
-  return{myTeamId,matchWeek:1,phase:'lineup',teams,fixtures:generateCareerFixtures(active.map(t=>t.id)),playerStats:{},transfers:[],lineup:{formation:teams.find(t=>t.id===myTeamId)?.formation||'2-2-1',starters:[]},createdAt:Date.now()};
+  const playerMoods={};
+  teams.find(t=>t.id===myTeamId)?.players.forEach(p=>{playerMoods[p.id]=65;});
+  return{myTeamId,matchWeek:1,phase:'lineup',teams,fixtures:generateCareerFixtures(active.map(t=>t.id)),playerStats:{},playerMoods,transfers:[],lineup:{formation:teams.find(t=>t.id===myTeamId)?.formation||'2-2-1',starters:[]},createdAt:Date.now()};
 }
 
 function CareerSetupView({teams,onStart}){
@@ -2099,6 +2110,7 @@ function CareerSetupView({teams,onStart}){
 }
 
 function CareerHubView({career,onNav}){
+  const moods=career.playerMoods||{};
   const myTeam=career.teams.find(t=>t.id===career.myTeamId);
   const played=useMemo(()=>career.fixtures.filter(f=>f.played),[career.fixtures]);
   const table=useMemo(()=>computeTable(career.teams,played),[career.teams,played]);
@@ -2149,6 +2161,17 @@ function CareerHubView({career,onNav}){
           </div>
         ))}
       </div>
+      {(()=>{
+        const ps=myTeam?.players||[];
+        const unhappy=ps.filter(p=>(moods[p.id]??65)<40);
+        if(unhappy.length===0)return null;
+        return(
+          <div onClick={()=>onNav('transfers')} style={{background:`${C.red}18`,border:`1px solid ${C.red}44`,borderRadius:8,padding:'10px 12px',marginBottom:10,cursor:'pointer',display:'flex',alignItems:'center',gap:10}}>
+            <div style={{width:8,height:8,borderRadius:'50%',background:C.red,flexShrink:0}}/>
+            <div style={{flex:1,fontSize:12,color:C.sub,lineHeight:1.4}}><span style={{color:C.red,fontWeight:700}}>{unhappy.length} player{unhappy.length!==1?'s':''} unhappy</span> — {unhappy.map(p=>p.name).join(', ')} may request a transfer.</div>
+          </div>
+        );
+      })()}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
         {[{id:'table',label:'📊 Table'},{id:'transfers',label:'💰 Transfers'},{id:'stats',label:'⚽ Stats'},{id:'news',label:'📰 News'}].map(item=>(
           <button key={item.id} onClick={()=>onNav(item.id)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'12px 10px',cursor:'pointer',color:C.text,fontSize:13,fontWeight:600,fontFamily:"'DM Sans',sans-serif",textAlign:'left'}}>{item.label}</button>
@@ -2190,6 +2213,7 @@ function CareerTableView({career}){
 }
 
 function CareerLineupView({career,onSave}){
+  const moods=career.playerMoods||{};
   const myTeam=career.teams.find(t=>t.id===career.myTeamId);
   const[lineup,setLineup]=useState(career.lineup||{formation:myTeam?.formation||'2-2-1',starters:[]});
   const[selSlot,setSelSlot]=useState(null);
@@ -2256,7 +2280,7 @@ function CareerLineupView({career,onSave}){
                 <div key={p.id} onClick={()=>assign(selSlot.pos,selSlot.idx,p.id)} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 6px',borderRadius:7,cursor:'pointer',marginBottom:2,opacity:inOtherSlot?.5:1,background:getStarter(selSlot.pos,selSlot.idx)?.id===p.id?`${C.accent}22`:'transparent'}}>
                   <div style={{background:posColor(p.position)+'22',color:posColor(p.position),borderRadius:4,padding:'2px 6px',fontSize:10,fontWeight:700,flexShrink:0}}>{p.position}</div>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}{oop&&<span style={{fontSize:9,color:C.gold,marginLeft:6}}>OOP ×0.7</span>}{inOtherSlot&&<span style={{fontSize:9,color:C.muted,marginLeft:6}}>in lineup</span>}</div>
+                    <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}{oop&&<span style={{fontSize:9,color:C.gold,marginLeft:6}}>OOP ×0.7</span>}{inOtherSlot&&<span style={{fontSize:9,color:C.muted,marginLeft:6}}>in lineup</span>}<span style={{display:'inline-block',width:7,height:7,borderRadius:'50%',background:moodInfo(moods[p.id]??65).color,marginLeft:6,verticalAlign:'middle',flexShrink:0}}/></div>
                   </div>
                   <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.text,minWidth:20,textAlign:'right'}}>{p.position==='GK'?'—':p.position==='MDF'?p.mdfAtkScore:p.score}</div>
                 </div>
@@ -2298,7 +2322,7 @@ function CareerSimView({career,onMatchComplete}){
 
   const kick=()=>{
     if(!myFix||!oppTeam)return;
-    const myLo=buildCareerLineup(myTeam,career.lineup?.starters||[],career.lineup?.formation||myTeam.formation);
+    const myLo=buildCareerLineup(myTeam,career.lineup?.starters||[],career.lineup?.formation||myTeam.formation,career.playerMoods||{});
     const oppLo=predictedLineup(oppTeam,career.fixtures);
     const r=isHome?simulateFromLineups(myLo,oppLo,myTeam,oppTeam):simulateFromLineups(oppLo,myLo,oppTeam,myTeam);
     setSimData(r);setMinute(0);setShown([]);setScore({h:0,a:0});setDone(false);setRunning(true);
@@ -2362,7 +2386,21 @@ function CareerSimView({career,onMatchComplete}){
     // Auto-suspend my players who got red cards (cleared next matchweek)
     const myRedIds=new Set(simData.events.filter(e=>e.type==='red'&&e.team===(isHome?'home':'away')).map(e=>e.player.id));
     updated={...updated,teams:updated.teams.map(t=>t.id!==career.myTeamId?t:{...t,players:t.players.map(p=>({...p,suspended:myRedIds.has(p.id)}))})};
-    onMatchComplete({...updated,playerStats:merged,matchWeek:career.matchWeek+1,phase:'lineup'});
+    // Update player moods
+    const mySide=isHome?'home':'away';
+    const myRes=isHome?(simData.hGoals>simData.aGoals?'W':simData.hGoals<simData.aGoals?'L':'D'):(simData.aGoals>simData.hGoals?'W':simData.aGoals<simData.hGoals?'L':'D');
+    const myStarterIds=new Set(career.lineup?.starters?.map(s=>s.playerId)||[]);
+    const mySubIds=new Set(simData.events.filter(e=>e.type==='sub'&&e.team===mySide).map(e=>e.playerOn.id));
+    const updMoods={...career.playerMoods};
+    (updated.teams.find(t=>t.id===career.myTeamId)?.players||[]).forEach(p=>{
+      const cur=updMoods[p.id]??65;
+      let delta=0;
+      if(myStarterIds.has(p.id)){delta+=8;if(myRes==='W')delta+=3;else if(myRes==='L')delta-=2;}
+      else if(mySubIds.has(p.id)){delta+=3;if(myRes==='W')delta+=2;else if(myRes==='L')delta-=1;}
+      else if(!p.injured&&!p.suspended){delta-=5;if(myRes==='L')delta-=1;}
+      updMoods[p.id]=Math.max(0,Math.min(100,Math.round((cur+delta)+(65-(cur+delta))*0.08)));
+    });
+    onMatchComplete({...updated,playerStats:merged,playerMoods:updMoods,matchWeek:career.matchWeek+1,phase:'lineup'});
   };
 
   const ico=t=>t==='goal'?'⚽':t==='yellow'?'🟡':t==='sub'?'🔄':'🟥';
@@ -2463,6 +2501,7 @@ function genCpuBids(career,myTeam){
 }
 
 function CareerTransferView({career,onUpdate}){
+  const moods=career.playerMoods||{};
   const myTeam=career.teams.find(t=>t.id===career.myTeamId);
   const[pane,setPane]=useState('market');
   const[posFilter,setPosFilter]=useState('ALL');
@@ -2596,16 +2635,25 @@ function CareerTransferView({career,onUpdate}){
       {pane==='squad'&&(
         <div>
           <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Mark untouchable to block CPU bids</div>
-          {(myTeam?.players||[]).map(p=>(
-            <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:C.card,border:`1px solid ${C.border}`,borderRadius:8,marginBottom:6}}>
-              <div style={{background:posColor(p.position)+'22',color:posColor(p.position),borderRadius:4,padding:'2px 6px',fontSize:10,fontWeight:700}}>{p.position}</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,color:C.text}}>{p.name}</div>
-                <div style={{fontSize:10,color:C.muted}}>{valDisplay(p,myTeam)}</div>
+          {(myTeam?.players||[]).map(p=>{
+            const sat=moods[p.id]??65;
+            const mi=moodInfo(sat);
+            const wantsOut=sat<40;
+            return(
+              <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:C.card,border:`1px solid ${wantsOut?C.red+'55':C.border}`,borderRadius:8,marginBottom:6}}>
+                <div style={{background:posColor(p.position)+'22',color:posColor(p.position),borderRadius:4,padding:'2px 6px',fontSize:10,fontWeight:700}}>{p.position}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>{p.name}{wantsOut&&<span style={{fontSize:9,color:C.red,marginLeft:6,fontWeight:700}}>WANTS OUT</span>}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginTop:2}}>
+                    <div style={{width:40,height:3,borderRadius:2,background:C.border,overflow:'hidden'}}><div style={{width:`${sat}%`,height:'100%',background:mi.color,borderRadius:2}}/></div>
+                    <span style={{fontSize:10,color:mi.color,fontWeight:700}}>{mi.label}</span>
+                    <span style={{fontSize:10,color:C.muted}}>{valDisplay(p,myTeam)}</span>
+                  </div>
+                </div>
+                <button onClick={()=>toggleUntouchable(p.id)} style={{background:p.untouchable?`${C.gold}22`:'transparent',border:`1px solid ${p.untouchable?C.gold:C.border}`,borderRadius:6,padding:'4px 10px',color:p.untouchable?C.gold:C.muted,fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{p.untouchable?'🔒 Untouchable':'Lock'}</button>
               </div>
-              <button onClick={()=>toggleUntouchable(p.id)} style={{background:p.untouchable?`${C.gold}22`:'transparent',border:`1px solid ${p.untouchable?C.gold:C.border}`,borderRadius:6,padding:'4px 10px',color:p.untouchable?C.gold:C.muted,fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{p.untouchable?'🔒 Untouchable':'Lock'}</button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -2644,6 +2692,17 @@ function genCareerNews(career){
   if(career.transfers.length>0){
     const t=[...career.transfers].reverse()[0];
     articles.push({id:'transfer',tag:'TRANSFER',tagColor:C.accent,title:`${t.playerName} moves on`,body:`${t.playerName} completed a transfer from ${t.fromTeam} to ${t.toTeam} for £${t.amount}M in Matchweek ${t.matchWeek}.`});
+  }
+  const myMoods=career.playerMoods||{};
+  const unhappy=(myTeam?.players||[]).filter(p=>(myMoods[p.id]??65)<40).sort((a,b)=>(myMoods[a.id]??65)-(myMoods[b.id]??65));
+  if(unhappy.length>0){
+    const p=unhappy[0];const sat=myMoods[p.id]??0;
+    articles.push({id:'mood_bad',tag:'SQUAD UNREST',tagColor:C.red,title:`${p.name} wants to leave`,body:`${p.name} has become deeply unhappy at ${myName} (morale: ${sat}/100) and is believed to be seeking a transfer. Giving them more playing time could help turn things around.`});
+  } else {
+    const happy=(myTeam?.players||[]).filter(p=>(myMoods[p.id]??65)>=80).length;
+    if(happy>=3){
+      articles.push({id:'mood_good',tag:'SQUAD HARMONY',tagColor:C.green,title:`High spirits at ${myName}`,body:`${happy} players are in excellent spirits at the club. Strong morale is translating into performances on the pitch.`});
+    }
   }
   if(articles.length===0)articles.push({id:'empty',tag:'WELCOME',tagColor:C.muted,title:'Career mode — day one',body:`${myName} are ready for the season. Set your lineup and play your first match to get things started.`});
   return articles;
