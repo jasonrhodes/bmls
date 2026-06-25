@@ -373,6 +373,46 @@ function computeTable(teams,fixtures){
   return rows.sort((a,b)=>b.pts-a.pts||(b.gf-b.ga)-(a.gf-a.ga)||b.gf-a.gf);
 }
 
+function generatePlayoffBracket(table){
+  const seeds=table.slice(0,7).map(t=>t.id);
+  return{seeds,phase:'qf',qf:[
+    {id:'qf1',homeId:seeds[1],awayId:seeds[6],homeScore:null,awayScore:null,winnerId:null},
+    {id:'qf2',homeId:seeds[2],awayId:seeds[5],homeScore:null,awayScore:null,winnerId:null},
+    {id:'qf3',homeId:seeds[3],awayId:seeds[4],homeScore:null,awayScore:null,winnerId:null},
+  ],sf:[],final:null,champion:null};
+}
+function advancePlayoffBracket(bracket){
+  if(bracket.phase==='qf'){
+    const winners=bracket.qf.map(m=>m.winnerId);
+    const bySeed=[...winners].sort((a,b)=>bracket.seeds.indexOf(b)-bracket.seeds.indexOf(a));
+    return{...bracket,phase:'sf',sf:[
+      {id:'sf1',homeId:bracket.seeds[0],awayId:bySeed[0],homeScore:null,awayScore:null,winnerId:null},
+      {id:'sf2',homeId:bySeed[1],awayId:bySeed[2],homeScore:null,awayScore:null,winnerId:null},
+    ]};
+  }
+  if(bracket.phase==='sf'){
+    const[w1,w2]=bracket.sf.map(m=>m.winnerId);
+    return{...bracket,phase:'final',final:{id:'final',homeId:w1,awayId:w2,homeScore:null,awayScore:null,winnerId:null}};
+  }
+  return bracket;
+}
+function simPlayoffMatch(homeTeam,awayTeam,fixturesForForm){
+  const hLo=predictedLineup(homeTeam,fixturesForForm||[]);
+  const aLo=predictedLineup(awayTeam,fixturesForForm||[]);
+  const r=simulateFromLineups(hLo,aLo,homeTeam,awayTeam);
+  if(r.hGoals===r.aGoals)return Math.random()<0.5?{...r,hGoals:r.hGoals+1,extraTime:true}:{...r,aGoals:r.aGoals+1,extraTime:true};
+  return r;
+}
+function simCareerPlayoffMatch(homeId,awayId,career){
+  const ht=career.teams.find(t=>t.id===homeId),at=career.teams.find(t=>t.id===awayId);
+  if(!ht||!at)return null;
+  const hLo=homeId===career.myTeamId?buildCareerLineup(ht,career.lineup?.starters||[],career.lineup?.formation||ht.formation,career.playerMoods||{}):careerCpuLineup(ht,career.fixtures);
+  const aLo=awayId===career.myTeamId?buildCareerLineup(at,career.lineup?.starters||[],career.lineup?.formation||at.formation,career.playerMoods||{}):careerCpuLineup(at,career.fixtures);
+  const r=simulateFromLineups(hLo,aLo,ht,at);
+  if(r.hGoals===r.aGoals)return Math.random()<0.5?{...r,hGoals:r.hGoals+1,extraTime:true}:{...r,aGoals:r.aGoals+1,extraTime:true};
+  return r;
+}
+
 function computePlayerStats(teams,fixtures){
   const map={};
   teams.forEach(t=>t.players.forEach(p=>{
@@ -719,11 +759,11 @@ function TableTab({teams,fixtures}){
         </tr></thead>
         <tbody>
           {table.map((row,i)=>{
-            const gd=row.gf-row.ga,isTop=i<3,isBot=i>=table.length-3;
+            const gd=row.gf-row.ga,isFirst=i===0,isPlayoff=i>0&&i<7;
             return(
               <tr key={row.id} style={{borderBottom:`1px solid ${C.border}22`}}>
                 <td style={{padding:"13px 10px",textAlign:"center"}}>
-                  <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,background:isTop?C.accent:isBot?`${C.red}22`:"transparent",color:isTop?C.white:isBot?C.red:C.muted,fontSize:11,fontWeight:700}}>{i+1}</span>
+                  <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:22,height:22,borderRadius:4,background:isFirst?C.accent:isPlayoff?`${C.green}22`:"transparent",color:isFirst?C.white:isPlayoff?C.green:C.muted,fontSize:11,fontWeight:700}}>{i+1}</span>
                 </td>
                 <td style={{padding:"13px 10px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -734,15 +774,15 @@ function TableTab({teams,fixtures}){
                 {[row.p,row.w,row.d,row.l,row.gf,row.ga].map((v,j)=><td key={j} style={{padding:"13px 10px",textAlign:"center",fontSize:13,color:C.sub}}>{v}</td>)}
                 <td style={{padding:"13px 10px",textAlign:"center",fontSize:13,fontWeight:700,color:gd>0?C.green:gd<0?C.red:C.sub}}>{gd>0?`+${gd}`:gd}</td>
                 <td style={{padding:"13px 10px"}}><div style={{display:"flex"}}>{row.form.slice(-5).length===0?<span style={{fontSize:11,color:C.muted}}>—</span>:row.form.slice(-5).map((r,ri)=><FormPip key={ri} r={r}/>)}</div></td>
-                <td style={{padding:"13px 10px",textAlign:"center"}}><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:isTop?C.gold:C.text}}>{row.pts}</span></td>
+                <td style={{padding:"13px 10px",textAlign:"center"}}><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:(isFirst||isPlayoff)?C.gold:C.text}}>{row.pts}</span></td>
               </tr>
             );
           })}
         </tbody>
       </table>
       <div style={{marginTop:14,display:"flex",gap:16,fontSize:11,color:C.muted}}>
-        <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,borderRadius:2,background:C.accent,display:"inline-block"}}/>Promotion</span>
-        <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,borderRadius:2,background:`${C.red}44`,border:`1px solid ${C.red}`,display:"inline-block"}}/>Relegation</span>
+        <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,borderRadius:2,background:C.accent,display:"inline-block"}}/>Playoff Bye (1st)</span>
+        <span style={{display:"flex",alignItems:"center",gap:5}}><span style={{width:10,height:10,borderRadius:2,background:`${C.green}44`,border:`1px solid ${C.green}`,display:"inline-block"}}/>Playoff (2nd–7th)</span>
       </div>
     </div>
   );
@@ -2107,6 +2147,7 @@ function simulateFromLineups(hl,al,hTeam,aTeam){
 }
 
 const CAREER_KEY='bmls_career';
+const PLAYOFF_KEY='bmls_playoffs';
 const loadCareer=()=>{try{return JSON.parse(localStorage.getItem(CAREER_KEY));}catch{return null;}};
 const saveCareer=c=>localStorage.setItem(CAREER_KEY,JSON.stringify(c));
 
@@ -2210,10 +2251,11 @@ function startNewSeason(career){
     cpuBids:newCpuBids,
     lineup:{...career.lineup,starters:[]},
     previousSeasons:[...(career.previousSeasons||[]),prevSeason],
+    playoffs:null,
   };
 }
 
-function CareerHubView({career,onNav,onNewSeason}){
+function CareerHubView({career,onNav,onNewSeason,onStartPlayoffs}){
   const moods=career.playerMoods||{};
   const myTeam=career.teams.find(t=>t.id===career.myTeamId);
   const played=useMemo(()=>career.fixtures.filter(f=>f.played),[career.fixtures]);
@@ -2263,7 +2305,9 @@ function CareerHubView({career,onNav,onNewSeason}){
               </div>
             );
           })()}
-          <Btn onClick={onNewSeason} style={{width:'100%',background:C.gold,color:'#000',fontWeight:700}}>New Season →</Btn>
+          {!career.playoffs&&<Btn onClick={onStartPlayoffs} style={{width:'100%',marginBottom:8}}>Start Playoffs →</Btn>}
+          {career.playoffs&&!career.playoffs.champion&&<Btn onClick={()=>onNav('playoffs')} style={{width:'100%',marginBottom:8}}>View Playoffs →</Btn>}
+          {career.playoffs?.champion&&<Btn onClick={onNewSeason} style={{width:'100%',background:C.gold,color:'#000',fontWeight:700}}>New Season →</Btn>}
         </div>
       )}
       {myFix&&!myFix.played&&(
@@ -2385,14 +2429,14 @@ function CareerTableView({career}){
           </tr></thead>
           <tbody>
             {table.map((row,i)=>{
-              const gd=row.gf-row.ga,isTop=i<3,isBot=i>=table.length-3,isMe=row.id===career.myTeamId;
+              const gd=row.gf-row.ga,isFirst=i===0,isPlayoff=i>0&&i<7,isMe=row.id===career.myTeamId;
               return(
                 <tr key={row.id} style={{borderBottom:`1px solid ${C.border}22`,background:isMe?`${row.color}18`:'transparent'}}>
-                  <td style={{padding:'11px 6px',textAlign:'center'}}><span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:22,height:22,borderRadius:4,background:isTop?C.accent:isBot?`${C.red}22`:'transparent',color:isTop?C.white:isBot?C.red:C.muted,fontSize:11,fontWeight:700}}>{i+1}</span></td>
+                  <td style={{padding:'11px 6px',textAlign:'center'}}><span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:22,height:22,borderRadius:4,background:isFirst?C.accent:isPlayoff?`${C.green}22`:'transparent',color:isFirst?C.white:isPlayoff?C.green:C.muted,fontSize:11,fontWeight:700}}>{i+1}</span></td>
                   <td style={{padding:'11px 6px'}}><div style={{display:'flex',alignItems:'center',gap:8}}><TeamBadge color={row.color} crest={row.crest} size={20}/><div style={{fontSize:13,fontWeight:isMe?700:500,color:C.text}}>{row.shortName||row.name}{isMe&&<span style={{fontSize:10,color:C.accent,marginLeft:5}}>▶</span>}</div></div></td>
                   {[row.p,row.w,row.d,row.l].map((v,j)=><td key={j} style={{padding:'11px 6px',textAlign:'center',fontSize:12,color:C.sub}}>{v}</td>)}
                   <td style={{padding:'11px 6px',textAlign:'center',fontSize:12,fontWeight:700,color:gd>0?C.green:gd<0?C.red:C.sub}}>{gd>0?`+${gd}`:gd}</td>
-                  <td style={{padding:'11px 6px',textAlign:'center'}}><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:isTop?C.gold:C.text}}>{row.pts}</span></td>
+                  <td style={{padding:'11px 6px',textAlign:'center'}}><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:(isFirst||isPlayoff)?C.gold:C.text}}>{row.pts}</span></td>
                 </tr>
               );
             })}
@@ -3267,7 +3311,149 @@ function CareerTeamsView({career}){
   );
 }
 
-const CAREER_VIEWS=[{id:'hub',label:'Hub'},{id:'lineup',label:'Lineup'},{id:'sim',label:'Match'},{id:'transfers',label:'Transfers'},{id:'teams',label:'Teams'},{id:'table',label:'Table'},{id:'stats',label:'Stats'},{id:'news',label:'News'}];
+function PlayoffsTab({teams,fixtures}){
+  const table=useMemo(()=>computeTable(teams,fixtures),[teams,fixtures]);
+  const seasonDone=fixtures.length>0&&fixtures.filter(f=>f.homeId&&f.awayId).every(f=>f.played);
+  const[bracket,setBracketState]=useState(()=>{try{return JSON.parse(localStorage.getItem(PLAYOFF_KEY));}catch{return null;}});
+  const saveBracket=b=>{localStorage.setItem(PLAYOFF_KEY,JSON.stringify(b));setBracketState(b);};
+  const teamById=id=>teams.find(t=>t.id===id);
+  const teamName=id=>teamById(id)?.name||'TBD';
+  const playMatch=(round,matchId)=>{
+    const matches=round==='final'?[bracket.final]:bracket[round];
+    const match=matches.find(m=>m.id===matchId);if(!match)return;
+    const ht=teamById(match.homeId),at=teamById(match.awayId);if(!ht||!at)return;
+    const r=simPlayoffMatch(ht,at,fixtures);
+    const winner=r.hGoals>r.aGoals?match.homeId:match.awayId;
+    let updated;
+    if(round==='final'){updated={...bracket,final:{...match,homeScore:r.hGoals,awayScore:r.aGoals,winnerId:winner},champion:winner,phase:'done'};}
+    else{const newRound=bracket[round].map(m=>m.id===matchId?{...m,homeScore:r.hGoals,awayScore:r.aGoals,winnerId:winner}:m);updated={...bracket,[round]:newRound};if(newRound.every(m=>m.winnerId))updated=advancePlayoffBracket(updated);}
+    saveBracket(updated);
+  };
+  const MatchCard=({match,round,label})=>{
+    if(!match)return null;
+    const ht=teamById(match.homeId),at=teamById(match.awayId);
+    const played=match.winnerId!=null,canPlay=!played&&match.homeId&&match.awayId;
+    return(
+      <div style={{background:C.card,border:`1px solid ${played?C.border:C.accent}`,borderRadius:8,padding:'10px 12px',marginBottom:6}}>
+        {label&&<div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:6}}>{label}</div>}
+        <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:6,marginBottom:canPlay?8:0}}>
+          <div style={{textAlign:'right',fontSize:12,fontWeight:match.winnerId===match.homeId?700:400,color:match.winnerId===match.homeId?C.text:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ht?.name||'TBD'}</div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:played?26:16,color:played?C.gold:C.border,letterSpacing:3,textAlign:'center',padding:'0 6px'}}>{played?`${match.homeScore}–${match.awayScore}`:'vs'}</div>
+          <div style={{fontSize:12,fontWeight:match.winnerId===match.awayId?700:400,color:match.winnerId===match.awayId?C.text:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{at?.name||'TBD'}</div>
+        </div>
+        {canPlay&&<Btn onClick={()=>playMatch(round,match.id)} style={{width:'100%',fontSize:11}}>▶ Simulate</Btn>}
+        {!played&&!canPlay&&<div style={{fontSize:10,color:C.muted,textAlign:'center',fontStyle:'italic'}}>Awaiting previous round</div>}
+      </div>
+    );
+  };
+  if(!seasonDone&&!bracket)return<div style={{textAlign:'center',paddingTop:48,color:C.muted,fontSize:13,lineHeight:1.8}}>Playoffs unlock once all regular season fixtures are played.</div>;
+  if(!bracket){
+    return(
+      <div style={{paddingBottom:20}}>
+        <div style={{background:C.card,border:`1px solid ${C.gold}44`,borderRadius:10,padding:16,marginBottom:16}}>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:C.gold,letterSpacing:2,marginBottom:8}}>Playoff Seedings</div>
+          {table.slice(0,7).map((t,i)=>(
+            <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:i===0?C.accent:C.green,width:20}}>{i+1}</span>
+              <TeamBadge color={t.color} crest={t.crest} size={18}/>
+              <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{t.name}</span>
+              <span style={{fontSize:11,color:C.muted}}>{t.pts}pts</span>
+              {i===0&&<span style={{fontSize:9,color:C.accent,fontWeight:700,background:`${C.accent}22`,borderRadius:3,padding:'2px 5px'}}>BYE</span>}
+            </div>
+          ))}
+        </div>
+        <Btn onClick={()=>saveBracket(generatePlayoffBracket(table))} style={{width:'100%'}}>Generate Bracket →</Btn>
+      </div>
+    );
+  }
+  return(
+    <div style={{paddingBottom:40}}>
+      {bracket.champion&&(
+        <div style={{background:`${C.gold}22`,border:`1px solid ${C.gold}55`,borderRadius:10,padding:16,marginBottom:16,textAlign:'center'}}>
+          <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:2,marginBottom:4}}>CHAMPION</div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,color:C.gold,letterSpacing:2}}>{teamName(bracket.champion)}</div>
+        </div>
+      )}
+      <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Quarter Finals</div>
+      <MatchCard match={bracket.qf[0]} round="qf" label="2nd vs 7th"/>
+      <MatchCard match={bracket.qf[1]} round="qf" label="3rd vs 6th"/>
+      <MatchCard match={bracket.qf[2]} round="qf" label="4th vs 5th"/>
+      {bracket.sf?.length>0&&<>
+        <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8,marginTop:16}}>Semi Finals</div>
+        <MatchCard match={bracket.sf[0]} round="sf" label="1st (bye) vs lowest QF winner"/>
+        <MatchCard match={bracket.sf[1]} round="sf" label="QF winners"/>
+      </>}
+      {bracket.final&&<>
+        <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8,marginTop:16}}>Final</div>
+        <MatchCard match={bracket.final} round="final"/>
+      </>}
+      <Btn onClick={()=>{localStorage.removeItem(PLAYOFF_KEY);setBracketState(null);}} variant="secondary" style={{width:'100%',marginTop:20,fontSize:11}}>Reset Bracket</Btn>
+    </div>
+  );
+}
+
+function CareerPlayoffsView({career,onUpdate}){
+  const playoffs=career.playoffs;
+  if(!playoffs)return<div style={{color:C.muted,textAlign:'center',paddingTop:32,fontSize:13}}>No active playoffs.</div>;
+  const teamById=id=>career.teams.find(t=>t.id===id);
+  const teamName=id=>teamById(id)?.name||'TBD';
+  const isMyTeam=id=>id===career.myTeamId;
+  const playMatch=(round,matchId)=>{
+    const matches=round==='final'?[playoffs.final]:playoffs[round];
+    const match=matches.find(m=>m.id===matchId);if(!match)return;
+    const r=simCareerPlayoffMatch(match.homeId,match.awayId,career);if(!r)return;
+    const winner=r.hGoals>r.aGoals?match.homeId:match.awayId;
+    let updatedPO;
+    if(round==='final'){updatedPO={...playoffs,final:{...match,homeScore:r.hGoals,awayScore:r.aGoals,winnerId:winner},champion:winner,phase:'done'};}
+    else{const newRound=playoffs[round].map(m=>m.id===matchId?{...m,homeScore:r.hGoals,awayScore:r.aGoals,winnerId:winner}:m);updatedPO={...playoffs,[round]:newRound};if(newRound.every(m=>m.winnerId))updatedPO=advancePlayoffBracket(updatedPO);}
+    onUpdate({...career,playoffs:updatedPO});
+  };
+  const MatchCard=({match,round,label})=>{
+    if(!match)return null;
+    const ht=teamById(match.homeId),at=teamById(match.awayId);
+    const played=match.winnerId!=null,canPlay=!played&&match.homeId&&match.awayId;
+    const myMatch=match.homeId===career.myTeamId||match.awayId===career.myTeamId;
+    return(
+      <div style={{background:C.card,border:`1px solid ${myMatch&&!played?C.accent:C.border}`,borderRadius:8,padding:'10px 12px',marginBottom:6}}>
+        {label&&<div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:6}}>{label}</div>}
+        {myMatch&&!played&&<div style={{fontSize:10,color:C.accent,fontWeight:700,marginBottom:6}}>★ Your match</div>}
+        <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:6,marginBottom:canPlay?8:0}}>
+          <div style={{textAlign:'right',fontSize:12,fontWeight:match.winnerId===match.homeId?700:400,color:isMyTeam(match.homeId)?C.accent:match.winnerId===match.homeId?C.text:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{ht?.name||'TBD'}</div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:played?26:16,color:played?C.gold:C.border,letterSpacing:3,textAlign:'center',padding:'0 6px'}}>{played?`${match.homeScore}–${match.awayScore}`:'vs'}</div>
+          <div style={{fontSize:12,fontWeight:match.winnerId===match.awayId?700:400,color:isMyTeam(match.awayId)?C.accent:match.winnerId===match.awayId?C.text:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{at?.name||'TBD'}</div>
+        </div>
+        {canPlay&&<Btn onClick={()=>playMatch(round,match.id)} style={{width:'100%',fontSize:11,background:myMatch?C.accent:undefined}}>{myMatch?'▶ Play Your Match':'▶ Simulate'}</Btn>}
+        {!played&&!canPlay&&<div style={{fontSize:10,color:C.muted,textAlign:'center',fontStyle:'italic'}}>Awaiting previous round</div>}
+      </div>
+    );
+  };
+  return(
+    <div style={{paddingBottom:40}}>
+      {playoffs.champion&&(
+        <div style={{background:`${C.gold}22`,border:`1px solid ${C.gold}55`,borderRadius:10,padding:16,marginBottom:16,textAlign:'center'}}>
+          <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:2,marginBottom:4}}>CHAMPION</div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,color:C.gold,letterSpacing:2}}>{teamName(playoffs.champion)}</div>
+          {playoffs.champion===career.myTeamId&&<div style={{fontSize:13,color:C.green,marginTop:4,fontWeight:700}}>You are champions!</div>}
+        </div>
+      )}
+      <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Quarter Finals</div>
+      <MatchCard match={playoffs.qf[0]} round="qf" label="2nd vs 7th"/>
+      <MatchCard match={playoffs.qf[1]} round="qf" label="3rd vs 6th"/>
+      <MatchCard match={playoffs.qf[2]} round="qf" label="4th vs 5th"/>
+      {playoffs.sf?.length>0&&<>
+        <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8,marginTop:16}}>Semi Finals</div>
+        <MatchCard match={playoffs.sf[0]} round="sf" label="1st (bye) vs lowest seed"/>
+        <MatchCard match={playoffs.sf[1]} round="sf" label="QF winners"/>
+      </>}
+      {playoffs.final&&<>
+        <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8,marginTop:16}}>Final</div>
+        <MatchCard match={playoffs.final} round="final"/>
+      </>}
+    </div>
+  );
+}
+
+const CAREER_VIEWS=[{id:'hub',label:'Hub'},{id:'lineup',label:'Lineup'},{id:'sim',label:'Match'},{id:'transfers',label:'Transfers'},{id:'playoffs',label:'Playoffs'},{id:'teams',label:'Teams'},{id:'table',label:'Table'},{id:'stats',label:'Stats'},{id:'news',label:'News'}];
 
 function CareerTab({teams}){
   const[career,setCareer]=useState(()=>loadCareer());
@@ -3291,11 +3477,12 @@ function CareerTab({teams}){
         </div>
       </div>
       <div style={{padding:16,paddingBottom:40}}>
-        {view==='hub'      &&<CareerHubView career={career} onNav={setView} onNewSeason={()=>{update(startNewSeason(career));}}/>}
+        {view==='hub'      &&<CareerHubView career={career} onNav={setView} onNewSeason={()=>{update(startNewSeason(career));}} onStartPlayoffs={()=>{const tbl=computeTable(career.teams,career.fixtures.filter(f=>f.played));if(tbl.length>=7)update({...career,playoffs:generatePlayoffBracket(tbl)});}}/>}
         {view==='table'    &&<CareerTableView career={career}/>}
         {view==='lineup'   &&<CareerLineupView career={career} onSave={lineup=>{update({...career,lineup});setView('hub');}}/>}
         {view==='sim'      &&<CareerSimView career={career} onMatchComplete={c=>{update(c);setView('hub');}}/>}
         {view==='transfers'&&<CareerTransferView career={career} onUpdate={update}/>}
+        {view==='playoffs' &&<CareerPlayoffsView career={career} onUpdate={update}/>}
         {view==='teams'    &&<CareerTeamsView career={career}/>}
         {view==='stats'    &&<CareerStatsView career={career}/>}
         {view==='news'     &&<CareerNewsView career={career}/>}
@@ -3314,6 +3501,7 @@ const TABS=[
   {id:"transfers", label:"Transfers"},
   {id:"news",      label:"News"},
   {id:"odds",      label:"Odds"},
+  {id:"playoffs",  label:"Playoffs"},
   {id:"create",    label:"Create"},
   {id:"career",    label:"Career"},
   {id:"manage",    label:"⚙ Manage"},
@@ -3415,6 +3603,7 @@ function App(){
         {tab==="transfers" &&<TransfersTab transfers={transfers} teams={teams}/>}
         {tab==="news"      &&<NewsTab teams={teams} fixtures={fixtures} transfers={transfers} activeMatchWeek={activeMatchWeek}/>}
         {tab==="odds"      &&<OddsTab teams={teams} fixtures={fixtures} activeMatchWeek={activeMatchWeek}/>}
+        {tab==="playoffs"  &&<PlayoffsTab teams={teams} fixtures={fixtures}/>}
         {tab==="create"    &&<CreateTab teams={teams}/>}
         {tab==="career"    &&<CareerTab teams={teams}/>}
         {tab==="manage"    &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} transfers={transfers} setTransfers={setTransfers} activeMatchWeek={activeMatchWeek} setActiveMatchWeek={setActiveMatchWeek} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
