@@ -2600,7 +2600,7 @@ function genPreseasonBids(teams,myTeamId,myTeam){
     const anyOut=bidTeam.players.filter(bp=>bp.position!=='GK').sort((a,b)=>quality(b)-quality(a));
     const pool=swapCands.length>0?swapCands:anyOut;
     const swapPlayer=pool.length>0?pool[Math.min(Math.floor(pool.length/2),pool.length-1)]:null;
-    bids.push({id:Date.now()+i,player:p,bidTeam,amount:Math.round(val*(0.65+Math.random()*.30)),val,swapPlayer});
+    bids.push({id:Date.now()+i,player:p,bidTeam,amount:Math.round(val*(0.40+Math.random()*.20)),val,swapPlayer,negotiationRound:0});
   });
   return bids;
 }
@@ -2652,6 +2652,8 @@ function CareerTransferView({career,onUpdate}){
   const[bid,setBid]=useState('');
   const[tradePlayer,setTradePlayer]=useState(null);
   const[result,setResult]=useState(null);
+  const[counterBid,setCounterBid]=useState(null);
+  const[counterCashInput,setCounterCashInput]=useState('');
   const cpuBids=career.cpuBids||[];
 
   const resetBid=()=>{setSel(null);setBid('');setTradePlayer(null);};
@@ -2681,15 +2683,13 @@ function CareerTransferView({career,onUpdate}){
     const totalOffer=cashAmt+tradeVal;
     const targetVal=playerValue(sel,sel._team);
     const pct=targetVal>0?totalOffer/targetVal:0;
-    if(pct>=.90){doTrade(sel,sel._team,cashAmt,tradePlayer);setResult({type:'accepted',player:sel,amount:cashAmt,tradePlayer});}
-    else if(pct>=.65){
-      const r=Math.random();
-      const counterTotal=Math.round(targetVal*(.90+Math.random()*.10));
+    if(pct>=.95){doTrade(sel,sel._team,cashAmt,tradePlayer);setResult({type:'accepted',player:sel,amount:cashAmt,tradePlayer});}
+    else if(pct>=.75){
+      const counterTotal=Math.round(targetVal*(.92+Math.random()*.06));
       const counterCash=Math.max(0,counterTotal-tradeVal);
-      if(r<.30){doTrade(sel,sel._team,cashAmt,tradePlayer);setResult({type:'accepted',player:sel,amount:cashAmt,tradePlayer});}
-      else if(r<.65){resetBid();setResult({type:'counter',player:sel,counter:counterCash,selTeam:sel._team,tradePlayer});}
-      else{resetBid();setResult({type:'rejected',player:sel,amount:cashAmt});}
-    }else{resetBid();setResult({type:'flat',player:sel,amount:cashAmt});}
+      resetBid();setResult({type:'counter',player:sel,counter:counterCash,selTeam:sel._team,tradePlayer});
+    }else if(pct>=.55){resetBid();setResult({type:'rejected',player:sel,amount:cashAmt});}
+    else{resetBid();setResult({type:'flat',player:sel,amount:cashAmt});}
   };
 
   const toggleUntouchable=pid=>{
@@ -2706,6 +2706,32 @@ function CareerTransferView({career,onUpdate}){
       return t;
     });
     onUpdate({...career,teams:updTeams,transfers:[...career.transfers,record],cpuBids:(career.cpuBids||[]).filter(cb=>cb.id!==b.id)});
+  };
+
+  const submitCounterBid=()=>{
+    if(!counterBid)return;
+    const demandCash=parseInt(counterCashInput)||0;
+    const{player,bidTeam,swapPlayer,negotiationRound=0}=counterBid;
+    const myVal=playerValue(player,myTeam);
+    const swapVal=swapPlayer?playerValue(swapPlayer,career.teams.find(t=>t.id===bidTeam.id)||bidTeam):0;
+    const totalDemand=demandCash+swapVal;
+    const pct=myVal>0?totalDemand/myVal:1;
+    const isLastRound=negotiationRound>=1;
+    if(pct<=0.75){
+      // CPU accepts — deal done at user's terms
+      acceptCpuBid({...counterBid,amount:demandCash});
+      setCounterBid(null);setCounterCashInput('');
+    } else if(pct<=0.90&&!isLastRound){
+      // CPU meets in the middle — final offer
+      const midCash=Math.round((demandCash+counterBid.amount)/2);
+      const updBids=(career.cpuBids||[]).map(b=>b.id===counterBid.id?{...b,amount:midCash,negotiationRound:1,finalOffer:true}:b);
+      onUpdate({...career,cpuBids:updBids});
+      setCounterBid(null);setCounterCashInput('');
+    } else {
+      // CPU walks away — too greedy
+      removeCpuBid(counterBid);
+      setCounterBid(null);setCounterCashInput('');
+    }
   };
 
   const valDisplay=(p,team)=>{
@@ -2739,13 +2765,31 @@ function CareerTransferView({career,onUpdate}){
         <div style={{background:`${C.gold}15`,border:`1px solid ${C.gold}55`,borderRadius:10,padding:12,marginBottom:12}}>
           <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Incoming Offers</div>
           {cpuBids.map(b=>(
-            <div key={b.id} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,padding:'8px 10px',background:C.card,borderRadius:7}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,color:C.text}}>{b.player.name}</div>
-                <div style={{fontSize:10,color:C.muted}}>{b.bidTeam.name} offer £{b.amount}M{b.swapPlayer?` + ${b.swapPlayer.name} (${b.swapPlayer.position})`:''}</div>
+            <div key={b.id} style={{marginBottom:8,background:C.card,borderRadius:8,overflow:'hidden'}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px'}}>
+                <div style={{flex:1}}>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    <span style={{fontSize:13,fontWeight:700,color:C.text}}>{b.player.name}</span>
+                    {b.finalOffer&&<span style={{fontSize:9,color:C.red,fontWeight:700,letterSpacing:1,background:`${C.red}22`,borderRadius:3,padding:'1px 5px'}}>FINAL OFFER</span>}
+                  </div>
+                  <div style={{fontSize:10,color:C.muted,marginTop:1}}>{b.bidTeam.name} offer £{b.amount}M{b.swapPlayer?` + ${b.swapPlayer.name} (${b.swapPlayer.position})`:''}</div>
+                </div>
+                <Btn onClick={()=>acceptCpuBid(b)} variant="success" small>Accept</Btn>
+                {!b.finalOffer&&<Btn onClick={()=>{setCounterBid(b);setCounterCashInput('');}} variant="secondary" small>Counter</Btn>}
+                <Btn onClick={()=>{removeCpuBid(b);if(counterBid?.id===b.id){setCounterBid(null);setCounterCashInput('');}}} variant="secondary" small>Decline</Btn>
               </div>
-              <Btn onClick={()=>acceptCpuBid(b)} variant="success" small>Accept</Btn>
-              <Btn onClick={()=>removeCpuBid(b)} variant="secondary" small>Decline</Btn>
+              {counterBid?.id===b.id&&(
+                <div style={{borderTop:`1px solid ${C.border}`,padding:'8px 10px',background:C.surface}}>
+                  <div style={{fontSize:10,color:C.muted,marginBottom:6}}>How much cash do you want? (swap: {b.swapPlayer?.name||'none'} stays in deal)</div>
+                  <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                    <span style={{fontSize:12,color:C.muted}}>£</span>
+                    <input type="number" min="0" value={counterCashInput} onChange={e=>setCounterCashInput(e.target.value)} placeholder="0" style={{flex:1,background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 8px',color:C.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:'none'}}/>
+                    <span style={{fontSize:12,color:C.muted}}>M</span>
+                    <Btn onClick={submitCounterBid} small>Send</Btn>
+                    <Btn onClick={()=>{setCounterBid(null);setCounterCashInput('');}} variant="secondary" small>Cancel</Btn>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
