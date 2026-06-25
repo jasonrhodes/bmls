@@ -2501,8 +2501,8 @@ function CareerSimView({career,onMatchComplete}){
       else if(!p.injured&&!p.suspended){delta-=5;if(myRes==='L')delta-=1;}
       updMoods[p.id]=Math.max(0,Math.min(100,Math.round((cur+delta)+(65-(cur+delta))*0.08)));
     });
-    // Transfer window: MW1–3 — CPU trades + new incoming bids each week
-    if(career.matchWeek<=3){
+    // CPU-CPU trades happen all season (up to 2 per matchweek)
+    for(let ti=0;ti<2;ti++){
       const cpuTrade=maybeDoCpuTrade(career,updated.teams);
       if(cpuTrade){
         const{player,seller,buyer,amount,swapPlayer}=cpuTrade;
@@ -2511,13 +2511,14 @@ function CareerSimView({career,onMatchComplete}){
           if(t.id===buyer.id)return{...t,careerBudget:(t.careerBudget||0)-amount,players:[...t.players.filter(p=>p.id!==swapPlayer.id),{...player,untouchable:false}]};
           return t;
         })};
-        updated={...updated,transfers:[...(updated.transfers||[]),{id:Date.now()+1,playerName:player.name,fromTeam:seller.name,toTeam:buyer.name,amount,swapPlayerName:swapPlayer.name,matchWeek:career.matchWeek,cpuTrade:true}]};
+        updated={...updated,transfers:[...(updated.transfers||[]),{id:Date.now()+ti+1,playerName:player.name,fromTeam:seller.name,toTeam:buyer.name,amount,swapPlayerName:swapPlayer.name,matchWeek:career.matchWeek,cpuTrade:true}]};
       }
-      if(career.matchWeek<3){
-        const updMyTeam=updated.teams.find(t=>t.id===career.myTeamId);
-        const newBid=maybeAddCpuBid(career,updated.teams,updMyTeam);
-        if(newBid)updated={...updated,cpuBids:[...(updated.cpuBids||[]),newBid]};
-      }
+    }
+    // User transfer window: MW1–3 — incoming bids for the user
+    if(career.matchWeek<3){
+      const updMyTeam=updated.teams.find(t=>t.id===career.myTeamId);
+      const newBid=maybeAddCpuBid(career,updated.teams,updMyTeam);
+      if(newBid)updated={...updated,cpuBids:[...(updated.cpuBids||[]),newBid]};
     }
     // Window closes after MW3 — clear any unresolved CPU bids
     const nextCpuBids=career.matchWeek>=3?[]:(updated.cpuBids||[]);
@@ -2652,7 +2653,7 @@ function maybeAddCpuBid(career,teams,myTeam){
 }
 
 function maybeDoCpuTrade(career,teams){
-  if(Math.random()>0.18)return null;
+  if(Math.random()>0.50)return null;
   const eligible=teams.filter(t=>t.id!==career.myTeamId&&t.name&&t.players.length>=6);
   if(eligible.length<2)return null;
   const sh=a=>[...a].sort(()=>Math.random()-.5);
