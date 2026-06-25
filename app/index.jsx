@@ -2150,7 +2150,27 @@ function CareerSetupView({teams,onStart}){
   );
 }
 
-function CareerHubView({career,onNav}){
+function startNewSeason(career){
+  const active=career.teams.filter(t=>t.name&&t.players.length>0);
+  const newFixtures=generateCareerFixtures(active.map(t=>t.id));
+  const myTeam=career.teams.find(t=>t.id===career.myTeamId);
+  const newCpuBids=genPreseasonBids(career.teams,career.myTeamId,myTeam);
+  const prevSeason={season:career.season||1,playerStats:career.playerStats,transfers:career.transfers,fixtures:career.fixtures};
+  return{
+    ...career,
+    season:(career.season||1)+1,
+    matchWeek:1,
+    phase:'lineup',
+    fixtures:newFixtures,
+    playerStats:{},
+    transfers:[],
+    cpuBids:newCpuBids,
+    lineup:{...career.lineup,starters:[]},
+    previousSeasons:[...(career.previousSeasons||[]),prevSeason],
+  };
+}
+
+function CareerHubView({career,onNav,onNewSeason}){
   const moods=career.playerMoods||{};
   const myTeam=career.teams.find(t=>t.id===career.myTeamId);
   const played=useMemo(()=>career.fixtures.filter(f=>f.played),[career.fixtures]);
@@ -2166,8 +2186,10 @@ function CareerHubView({career,onNav}){
     <div style={{paddingBottom:16}}>
       {seasonDone&&(
         <div style={{background:`${C.gold}22`,border:`1px solid ${C.gold}44`,borderRadius:10,padding:16,marginBottom:12,textAlign:'center'}}>
+          <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:4}}>Season {career.season||1}</div>
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:C.gold,letterSpacing:2}}>Season Complete</div>
-          <div style={{fontSize:13,color:C.muted,marginTop:4}}>Final position: {myPos}{myPos===1?' 🏆':myPos<=3?' 🥉':''}</div>
+          <div style={{fontSize:13,color:C.muted,marginTop:4,marginBottom:14}}>Final position: {myPos}{myPos===1?' 🏆':myPos<=3?' 🥉':''} · Morale and squad carry over</div>
+          <Btn onClick={onNewSeason} style={{width:'100%',background:C.gold,color:'#000',fontWeight:700}}>New Season →</Btn>
         </div>
       )}
       {myFix&&!myFix.played&&(
@@ -2479,7 +2501,7 @@ function CareerSimView({career,onMatchComplete}){
       else if(!p.injured&&!p.suspended){delta-=5;if(myRes==='L')delta-=1;}
       updMoods[p.id]=Math.max(0,Math.min(100,Math.round((cur+delta)+(65-(cur+delta))*0.08)));
     });
-    // Transfer window: MW1–3 — run one CPU-CPU trade per matchweek, close after MW3
+    // Transfer window: MW1–3 — CPU trades + new incoming bids each week
     if(career.matchWeek<=3){
       const cpuTrade=maybeDoCpuTrade(career,updated.teams);
       if(cpuTrade){
@@ -2491,9 +2513,14 @@ function CareerSimView({career,onMatchComplete}){
         })};
         updated={...updated,transfers:[...(updated.transfers||[]),{id:Date.now()+1,playerName:player.name,fromTeam:seller.name,toTeam:buyer.name,amount,swapPlayerName:swapPlayer.name,matchWeek:career.matchWeek,cpuTrade:true}]};
       }
+      if(career.matchWeek<3){
+        const updMyTeam=updated.teams.find(t=>t.id===career.myTeamId);
+        const newBid=maybeAddCpuBid(career,updated.teams,updMyTeam);
+        if(newBid)updated={...updated,cpuBids:[...(updated.cpuBids||[]),newBid]};
+      }
     }
     // Window closes after MW3 — clear any unresolved CPU bids
-    const nextCpuBids=career.matchWeek===3?[]:(career.cpuBids||[]);
+    const nextCpuBids=career.matchWeek>=3?[]:(updated.cpuBids||[]);
     onMatchComplete({...updated,playerStats:merged,playerMoods:updMoods,cpuBids:nextCpuBids,matchWeek:career.matchWeek+1,phase:'lineup'});
   };
 
@@ -2587,7 +2614,7 @@ function genPreseasonBids(teams,myTeamId,myTeam){
   const eligible=(myTeam?.players||[]).filter(p=>p.position!=='GK'&&!p.untouchable&&(p.score||0)>=6);
   const others=teams.filter(t=>t.id!==myTeamId&&t.name&&t.players.length>=2);
   if(!eligible.length||!others.length)return bids;
-  const n=Math.random()<0.25?2:Math.random()<0.5?1:0;
+  const n=Math.random()<0.35?3:Math.random()<0.6?2:1;
   const sh=a=>[...a].sort(()=>Math.random()-.5);
   const quality=p=>p.position==='MDF'?Math.max(p.mdfAtkScore||0,p.mdfDefScore||0):(p.score||0);
   const{atk,def}=lineupRatings(myTeam);
@@ -2603,6 +2630,25 @@ function genPreseasonBids(teams,myTeamId,myTeam){
     bids.push({id:Date.now()+i,player:p,bidTeam,amount:Math.round(val*(0.40+Math.random()*.20)),val,swapPlayer,negotiationRound:0});
   });
   return bids;
+}
+
+function maybeAddCpuBid(career,teams,myTeam){
+  if(Math.random()>0.45)return null;
+  const quality=p=>p.position==='MDF'?Math.max(p.mdfAtkScore||0,p.mdfDefScore||0):(p.score||0);
+  const eligible=(myTeam?.players||[]).filter(p=>p.position!=='GK'&&!p.untouchable&&(p.score||0)>=5);
+  const others=teams.filter(t=>t.id!==career.myTeamId&&t.name&&t.players.length>=2);
+  if(!eligible.length||!others.length)return null;
+  const sh=a=>[...a].sort(()=>Math.random()-.5);
+  const{atk,def}=lineupRatings(myTeam);
+  const swapPosPref=atk<=def?['FWD','MDF']:['DEF','MDF'];
+  const player=sh(eligible)[0];
+  const val=playerValue(player,myTeam);
+  const bidTeam=others[Math.floor(Math.random()*others.length)];
+  const swapCands=bidTeam.players.filter(bp=>swapPosPref.includes(bp.position)&&bp.position!=='GK').sort((a,b)=>quality(b)-quality(a));
+  const anyOut=bidTeam.players.filter(bp=>bp.position!=='GK').sort((a,b)=>quality(b)-quality(a));
+  const pool=swapCands.length>0?swapCands:anyOut;
+  const swapPlayer=pool.length>0?pool[Math.min(Math.floor(pool.length/2),pool.length-1)]:null;
+  return{id:Date.now()+Math.floor(Math.random()*9999),player,bidTeam,amount:Math.round(val*(0.40+Math.random()*.20)),val,swapPlayer,negotiationRound:0};
 }
 
 function maybeDoCpuTrade(career,teams){
@@ -3053,7 +3099,7 @@ function CareerTab({teams}){
           <TeamBadge color={myTeam?.color} crest={myTeam?.crest} size={28}/>
           <div style={{flex:1}}>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:C.text,letterSpacing:1,lineHeight:1}}>{myTeam?.name}</div>
-            <div style={{fontSize:10,color:C.muted}}>Matchweek {career.matchWeek} · £{myTeam?.careerBudget??0}M</div>
+            <div style={{fontSize:10,color:C.muted}}>Season {career.season||1} · MW{career.matchWeek} · £{myTeam?.careerBudget??0}M</div>
           </div>
           <button onClick={()=>{if(window.confirm('Abandon career? This cannot be undone.')){localStorage.removeItem(CAREER_KEY);setCareer(null);}}} style={{background:'none',border:`1px solid ${C.border}`,borderRadius:5,color:C.muted,fontSize:10,padding:'3px 8px',cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>Abandon</button>
         </div>
@@ -3062,7 +3108,7 @@ function CareerTab({teams}){
         </div>
       </div>
       <div style={{padding:16,paddingBottom:40}}>
-        {view==='hub'      &&<CareerHubView career={career} onNav={setView}/>}
+        {view==='hub'      &&<CareerHubView career={career} onNav={setView} onNewSeason={()=>{update(startNewSeason(career));}}/>}
         {view==='table'    &&<CareerTableView career={career}/>}
         {view==='lineup'   &&<CareerLineupView career={career} onSave={lineup=>{update({...career,lineup});setView('hub');}}/>}
         {view==='sim'      &&<CareerSimView career={career} onMatchComplete={c=>{update(c);setView('hub');}}/>}
