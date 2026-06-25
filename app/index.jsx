@@ -25,7 +25,7 @@ const ROLES=[
 ];
 
 const makeTeam=id=>({id,name:"",shortName:"",color:"#3B82F6",crest:null,players:[],formation:"2-2-1",budget:0});
-const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,injured:false,suspended:false,wide:false,altPosition:null,roles:[]});
+const makePlayer=()=>({id:Date.now()+Math.random(),name:"",position:"DEF",score:7,mdfAtkScore:7,mdfDefScore:7,age:25,injured:false,suspended:false,wide:false,altPosition:null,roles:[]});
 const makeFixture=()=>({id:String(Date.now()+Math.random()),homeId:null,awayId:null,date:"",homeScore:null,awayScore:null,played:false,playerStats:[],matchWeek:null});
 
 function generateSeason(namedTeams){
@@ -1170,8 +1170,11 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
                 </div>
               </div>
               <div style={{marginTop:8,display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:10,color:C.muted,flex:1}}>Transfer Value (£M)</span>
-                <input type="number" min="1" max="9999" value={p.value??''} onChange={e=>updPlayer(editTeam,p.id,'value',e.target.value===''?null:+e.target.value)} placeholder="Auto" style={{width:80,background:C.card,border:`1px solid ${p.value!=null?C.accent:C.border}`,borderRadius:6,padding:'5px 8px',color:C.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:'none',textAlign:'center'}}/>
+                <span style={{fontSize:10,color:C.muted,flex:1}}>Age</span>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <input type="range" min="16" max="40" step="1" value={p.age||25} onChange={e=>updPlayer(editTeam,p.id,"age",+e.target.value)} style={{width:100,accentColor:C.accent}}/>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:C.accent,minWidth:28,textAlign:"center"}}>{p.age||25}</div>
+                </div>
               </div>
             </div>
           ))}
@@ -2061,11 +2064,12 @@ const loadCareer=()=>{try{return JSON.parse(localStorage.getItem(CAREER_KEY));}c
 const saveCareer=c=>localStorage.setItem(CAREER_KEY,JSON.stringify(c));
 
 function playerValue(p,team){
-  if(p.value!=null)return p.value;
   const{atk,def}=lineupRatings(team);
   const ps=p.position==='GK'?7:p.position==='MDF'?(p.mdfAtkScore+p.mdfDefScore)/2:(p.score||5);
   const ts=(p.position==='FWD'||p.position==='MDF')?atk:def;
-  return Math.round(ps*ps*Math.max(0.5,1+(ts-7)*0.08));
+  const age=p.age||25;
+  const ageMult=Math.max(0.6,3.2-0.067*age);
+  return Math.round(ps*ps*ageMult*Math.max(0.5,1+(ts-7)*0.08));
 }
 function valueKnown(p){
   const s=p.position==='MDF'?Math.max(p.mdfAtkScore||0,p.mdfDefScore||0):(p.score||0);
