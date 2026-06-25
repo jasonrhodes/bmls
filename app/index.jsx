@@ -2200,9 +2200,12 @@ function CareerHubView({career,onNav,onNewSeason}){
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:C.border,letterSpacing:4,textAlign:'center'}}>vs</div>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:C.text,letterSpacing:.5}}>{isHome?opp?.name:myTeam?.name}</div>
           </div>
+          {(career.lineup?.starters||[]).length===0&&(
+            <div style={{background:`${C.red}18`,border:`1px solid ${C.red}44`,borderRadius:7,padding:'8px 12px',marginBottom:8,fontSize:12,color:C.red,fontWeight:600,textAlign:'center'}}>Set your lineup before kick off</div>
+          )}
           <div style={{display:'flex',gap:8,marginBottom:6}}>
             <Btn onClick={()=>onNav('lineup')} variant="secondary" style={{flex:1}}>Set Lineup</Btn>
-            <Btn onClick={()=>onNav('sim')} style={{flex:1}}>▶ Play Match</Btn>
+            <Btn onClick={()=>onNav('sim')} style={{flex:1,opacity:(career.lineup?.starters||[]).length===0?0.35:1,pointerEvents:(career.lineup?.starters||[]).length===0?'none':'auto'}}>▶ Play Match</Btn>
           </div>
           <Btn onClick={()=>onNav('opponent')} variant="secondary" style={{width:'100%',fontSize:11}}>Scout Report</Btn>
         </div>
@@ -2501,24 +2504,25 @@ function CareerSimView({career,onMatchComplete}){
       else if(!p.injured&&!p.suspended){delta-=5;if(myRes==='L')delta-=1;}
       updMoods[p.id]=Math.max(0,Math.min(100,Math.round((cur+delta)+(65-(cur+delta))*0.08)));
     });
-    // CPU-CPU trades happen all season (up to 2 per matchweek)
-    for(let ti=0;ti<2;ti++){
-      const cpuTrade=maybeDoCpuTrade(career,updated.teams);
-      if(cpuTrade){
-        const{player,seller,buyer,amount,swapPlayer}=cpuTrade;
-        updated={...updated,teams:updated.teams.map(t=>{
-          if(t.id===seller.id)return{...t,careerBudget:(t.careerBudget||0)+amount,players:[...t.players.filter(p=>p.id!==player.id),{...swapPlayer,untouchable:false}]};
-          if(t.id===buyer.id)return{...t,careerBudget:(t.careerBudget||0)-amount,players:[...t.players.filter(p=>p.id!==swapPlayer.id),{...player,untouchable:false}]};
-          return t;
-        })};
-        updated={...updated,transfers:[...(updated.transfers||[]),{id:Date.now()+ti+1,playerName:player.name,fromTeam:seller.name,toTeam:buyer.name,amount,swapPlayerName:swapPlayer.name,matchWeek:career.matchWeek,cpuTrade:true}]};
+    // Transfer window MW1–3: CPU-CPU trades (up to 2) + new incoming bids for user
+    if(career.matchWeek<=3){
+      for(let ti=0;ti<2;ti++){
+        const cpuTrade=maybeDoCpuTrade(career,updated.teams);
+        if(cpuTrade){
+          const{player,seller,buyer,amount,swapPlayer}=cpuTrade;
+          updated={...updated,teams:updated.teams.map(t=>{
+            if(t.id===seller.id)return{...t,careerBudget:(t.careerBudget||0)+amount,players:[...t.players.filter(p=>p.id!==player.id),{...swapPlayer,untouchable:false}]};
+            if(t.id===buyer.id)return{...t,careerBudget:(t.careerBudget||0)-amount,players:[...t.players.filter(p=>p.id!==swapPlayer.id),{...player,untouchable:false}]};
+            return t;
+          })};
+          updated={...updated,transfers:[...(updated.transfers||[]),{id:Date.now()+ti+1,playerName:player.name,fromTeam:seller.name,toTeam:buyer.name,amount,swapPlayerName:swapPlayer.name,matchWeek:career.matchWeek,cpuTrade:true}]};
+        }
       }
-    }
-    // User transfer window: MW1–3 — incoming bids for the user
-    if(career.matchWeek<3){
-      const updMyTeam=updated.teams.find(t=>t.id===career.myTeamId);
-      const newBid=maybeAddCpuBid(career,updated.teams,updMyTeam);
-      if(newBid)updated={...updated,cpuBids:[...(updated.cpuBids||[]),newBid]};
+      if(career.matchWeek<3){
+        const updMyTeam=updated.teams.find(t=>t.id===career.myTeamId);
+        const newBid=maybeAddCpuBid(career,updated.teams,updMyTeam);
+        if(newBid)updated={...updated,cpuBids:[...(updated.cpuBids||[]),newBid]};
+      }
     }
     // Window closes after MW3 — clear any unresolved CPU bids
     const nextCpuBids=career.matchWeek>=3?[]:(updated.cpuBids||[]);
