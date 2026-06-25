@@ -791,44 +791,68 @@ function RatingsTab({teams}){
   const[metric,setMetric]=useState("atk");
   const teamStats=teams.filter(t=>t.name&&t.players.length>0).map(t=>({...t,...lineupRatings(t)})).sort((a,b)=>metric==="atk"?b.atk-a.atk:b.def-a.def);
   const getPlayerVal=(p,metric)=>{if(p.position==="GK")return 0;if(metric==="atk"){if(p.position==="FWD")return p.score;if(p.position==="MDF")return p.mdfAtkScore;return 0;}else{if(p.position==="DEF")return p.score;if(p.position==="MDF")return p.mdfDefScore;return 0;}};
-  const allPlayers=teams.flatMap(t=>t.players.filter(p=>p.name&&p.position!=="GK").map(p=>({...p,teamName:t.name,teamColor:t.color,teamShort:t.shortName||(t.name&&t.name.slice(0,3).toUpperCase())})));
+  const allPlayers=teams.flatMap(t=>t.players.filter(p=>p.name).map(p=>({...p,_team:t,teamName:t.name,teamColor:t.color,teamShort:t.shortName||(t.name&&t.name.slice(0,3).toUpperCase())})));
   const sorted=[...allPlayers].map(p=>({...p,val:getPlayerVal(p,metric)})).filter(p=>p.val>0).sort((a,b)=>b.val-a.val);
+  const valuesSorted=[...allPlayers].map(p=>({...p,tv:playerValue(p,p._team)})).sort((a,b)=>b.tv-a.tv);
+  const maxTv=valuesSorted[0]?.tv||1;
   if(allPlayers.length===0)return<Empty icon="🎖️" msg="No players yet." hint="Go to Manage → Teams."/>;
   return(
     <div>
       <div style={{display:"flex",gap:8,marginBottom:20}}>
-        {[{key:"atk",label:"Attack",color:C.red},{key:"def",label:"Defense",color:C.green}].map(m=>(
+        {[{key:"atk",label:"Attack",color:C.red},{key:"def",label:"Defense",color:C.green},{key:"val",label:"Values",color:C.gold}].map(m=>(
           <button key={m.key} onClick={()=>setMetric(m.key)} style={{background:metric===m.key?m.color:C.card,color:metric===m.key?"#000":C.sub,border:"none",borderRadius:6,padding:"7px 16px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{m.label}</button>
         ))}
       </div>
-      <SLabel>Team Rankings</SLabel>
-      <div style={{marginBottom:24}}>
-        {teamStats.map((t,i)=>{const val=metric==="atk"?t.atk:t.def,color=metric==="atk"?C.red:C.green;return(
-          <div key={t.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
-              <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
-              <TeamBadge color={t.color} crest={t.crest} size={20}/>
-              <span style={{fontSize:13,fontWeight:600,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</span>
-              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color,minWidth:36,textAlign:"right"}}>{val||"—"}</span>
+      {metric==="val"?(
+        <div>
+          <SLabel>Transfer Values</SLabel>
+          {valuesSorted.map((p,i)=>(
+            <div key={p.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
+                <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
+                <span style={{width:8,height:8,borderRadius:"50%",background:p.teamColor,flexShrink:0}}/>
+                <span style={{fontSize:14,fontWeight:600,color:C.text,flex:1}}>{p.name}</span>
+                <span style={{fontSize:10,color:C.muted}}>Age {p.age||25}</span>
+                <span style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700}}>{p.position}</span>
+                <span style={{fontSize:11,color:C.muted}}>{p.teamShort}</span>
+                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:C.gold,minWidth:52,textAlign:"right"}}>£{p.tv}M</span>
+              </div>
+              <div style={{height:4,background:C.border,borderRadius:2,overflow:"hidden"}}><div style={{width:`${(p.tv/maxTv)*100}%`,height:"100%",background:C.gold,borderRadius:2}}/></div>
             </div>
-            <div style={{height:4,background:C.border,borderRadius:2,overflow:"hidden"}}><div style={{width:`${((val||0)/10)*100}%`,height:"100%",background:color,borderRadius:2}}/></div>
-          </div>
-        );})}
-      </div>
-      <SLabel>Top Players</SLabel>
-      {sorted.slice(0,20).map((p,i)=>{const color=metric==="atk"?C.red:C.green;return(
-        <div key={p.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
-            <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
-            <span style={{width:8,height:8,borderRadius:"50%",background:p.teamColor,flexShrink:0}}/>
-            <span style={{fontSize:14,fontWeight:600,color:C.text,flex:1}}>{p.name}</span>
-            <span style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700}}>{p.position}</span>
-            <span style={{fontSize:11,color:C.muted}}>{p.teamShort}</span>
-            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color,minWidth:36,textAlign:"right"}}>{p.val}</span>
-          </div>
-          <div style={{height:4,background:C.border,borderRadius:2,overflow:"hidden"}}><div style={{width:`${(p.val/10)*100}%`,height:"100%",background:color,borderRadius:2}}/></div>
+          ))}
         </div>
-      );})}
+      ):(
+        <div>
+          <SLabel>Team Rankings</SLabel>
+          <div style={{marginBottom:24}}>
+            {teamStats.map((t,i)=>{const val=metric==="atk"?t.atk:t.def,color=metric==="atk"?C.red:C.green;return(
+              <div key={t.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
+                  <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
+                  <TeamBadge color={t.color} crest={t.crest} size={20}/>
+                  <span style={{fontSize:13,fontWeight:600,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.name}</span>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color,minWidth:36,textAlign:"right"}}>{val||"—"}</span>
+                </div>
+                <div style={{height:4,background:C.border,borderRadius:2,overflow:"hidden"}}><div style={{width:`${((val||0)/10)*100}%`,height:"100%",background:color,borderRadius:2}}/></div>
+              </div>
+            );})}
+          </div>
+          <SLabel>Top Players</SLabel>
+          {sorted.slice(0,20).map((p,i)=>{const color=metric==="atk"?C.red:C.green;return(
+            <div key={p.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
+                <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
+                <span style={{width:8,height:8,borderRadius:"50%",background:p.teamColor,flexShrink:0}}/>
+                <span style={{fontSize:14,fontWeight:600,color:C.text,flex:1}}>{p.name}</span>
+                <span style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700}}>{p.position}</span>
+                <span style={{fontSize:11,color:C.muted}}>{p.teamShort}</span>
+                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color,minWidth:36,textAlign:"right"}}>{p.val}</span>
+              </div>
+              <div style={{height:4,background:C.border,borderRadius:2,overflow:"hidden"}}><div style={{width:`${(p.val/10)*100}%`,height:"100%",background:color,borderRadius:2}}/></div>
+            </div>
+          );})}
+        </div>
+      )}
     </div>
   );
 }
