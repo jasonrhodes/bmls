@@ -2086,7 +2086,7 @@ function createCareer(myTeamId,allTeams){
   const active=teams.filter(t=>t.name&&t.players.length>0);
   const playerMoods={};
   teams.find(t=>t.id===myTeamId)?.players.forEach(p=>{playerMoods[p.id]=65;});
-  return{myTeamId,matchWeek:1,phase:'lineup',teams,fixtures:generateCareerFixtures(active.map(t=>t.id)),playerStats:{},playerMoods,transfers:[],lineup:{formation:teams.find(t=>t.id===myTeamId)?.formation||'2-2-1',starters:[]},createdAt:Date.now()};
+  return{myTeamId,matchWeek:1,phase:'lineup',teams,fixtures:generateCareerFixtures(active.map(t=>t.id)),playerStats:{},playerMoods,transfers:[],cpuBids:[],cpuBidCount:0,lineup:{formation:teams.find(t=>t.id===myTeamId)?.formation||'2-2-1',starters:[]},createdAt:Date.now()};
 }
 
 function CareerSetupView({teams,onStart}){
@@ -2420,7 +2420,12 @@ function CareerSimView({career,onMatchComplete}){
       else if(!p.injured&&!p.suspended){delta-=5;if(myRes==='L')delta-=1;}
       updMoods[p.id]=Math.max(0,Math.min(100,Math.round((cur+delta)+(65-(cur+delta))*0.08)));
     });
-    onMatchComplete({...updated,playerStats:merged,playerMoods:updMoods,matchWeek:career.matchWeek+1,phase:'lineup'});
+    // Maybe generate a CPU transfer bid (max 3 per season)
+    const updMyTeam=updated.teams.find(t=>t.id===career.myTeamId);
+    const newBid=maybeGenCpuBid({...career,cpuBidCount:career.cpuBidCount||0},updMyTeam);
+    const nextCpuBids=newBid?[...(career.cpuBids||[]),newBid]:(career.cpuBids||[]);
+    const nextBidCount=newBid?(career.cpuBidCount||0)+1:(career.cpuBidCount||0);
+    onMatchComplete({...updated,playerStats:merged,playerMoods:updMoods,cpuBids:nextCpuBids,cpuBidCount:nextBidCount,matchWeek:career.matchWeek+1,phase:'lineup'});
   };
 
   const ico=t=>t==='goal'?'⚽':t==='yellow'?'🟡':t==='sub'?'🔄':t==='injury'?'🤕':'🟥';
@@ -2508,16 +2513,17 @@ function CareerStatsView({career}){
   );
 }
 
-function genCpuBids(career,myTeam){
+function maybeGenCpuBid(career,myTeam){
+  if((career.cpuBidCount||0)>=3)return null;
+  if(Math.random()>0.22)return null;
   const eligible=(myTeam?.players||[]).filter(p=>!p.untouchable&&(p.score||0)>=6);
-  if(!eligible.length)return[];
+  if(!eligible.length)return null;
   const cpuTeams=career.teams.filter(t=>t.id!==career.myTeamId&&t.name&&t.players.length);
-  if(!cpuTeams.length)return[];
-  const sh=a=>[...a].sort(()=>Math.random()-.5);
-  return sh(eligible).slice(0,Math.random()<.4?2:1).map(p=>{
-    const val=playerValue(p,myTeam);
-    return{player:p,bidTeam:sh(cpuTeams)[0],amount:Math.round(val*(0.65+Math.random()*.30)),val};
-  });
+  if(!cpuTeams.length)return null;
+  const p=eligible[Math.floor(Math.random()*eligible.length)];
+  const val=playerValue(p,myTeam);
+  const bidTeam=cpuTeams[Math.floor(Math.random()*cpuTeams.length)];
+  return{id:Date.now(),player:p,bidTeam,amount:Math.round(val*(0.65+Math.random()*.30)),val};
 }
 
 function CareerTransferView({career,onUpdate}){
@@ -2528,52 +2534,61 @@ function CareerTransferView({career,onUpdate}){
   const[search,setSearch]=useState('');
   const[sel,setSel]=useState(null);
   const[bid,setBid]=useState('');
+  const[tradePlayer,setTradePlayer]=useState(null);
   const[result,setResult]=useState(null);
-  const[cpuBids]=useState(()=>genCpuBids(career,myTeam));
+  const cpuBids=career.cpuBids||[];
+
+  const resetBid=()=>{setSel(null);setBid('');setTradePlayer(null);};
 
   const otherPlayers=career.teams.filter(t=>t.id!==career.myTeamId&&t.name).flatMap(t=>t.players.map(p=>({...p,_team:t})));
   const filtered=otherPlayers.filter(p=>(posFilter==='ALL'||p.position===posFilter)&&(!search||p.name.toLowerCase().includes(search.toLowerCase())));
 
-  const doTrade=(player,fromTeam,amount)=>{
-    if((myTeam.careerBudget||0)<amount){setResult({type:'no_budget',amount});return;}
-    const {_team,...clean}=player;
-    const record={id:Date.now(),playerId:player.id,playerName:player.name,fromTeam:fromTeam.name,toTeam:myTeam.name,amount,matchWeek:career.matchWeek};
+  const doTrade=(target,fromTeam,cashAmt,tradeP=null)=>{
+    if((myTeam.careerBudget||0)<cashAmt){setResult({type:'no_budget',amount:cashAmt});return;}
+    const{_team,...cleanTarget}=target;
+    const record={id:Date.now(),playerId:target.id,playerName:target.name,fromTeam:fromTeam.name,toTeam:myTeam.name,amount:cashAmt,tradePlayerName:tradeP?.name||null,matchWeek:career.matchWeek};
     const updTeams=career.teams.map(t=>{
-      if(t.id===fromTeam.id)return{...t,careerBudget:(t.careerBudget||0)+amount,players:t.players.filter(p=>p.id!==player.id)};
-      if(t.id===career.myTeamId)return{...t,careerBudget:(t.careerBudget||0)-amount,players:[...t.players,clean]};
+      if(t.id===fromTeam.id)return{...t,careerBudget:(t.careerBudget||0)+cashAmt,players:[...t.players.filter(p=>p.id!==target.id),...(tradeP?[{...tradeP,untouchable:false}]:[])]};
+      if(t.id===career.myTeamId)return{...t,careerBudget:(t.careerBudget||0)-cashAmt,players:[...t.players.filter(p=>p.id!==target.id&&(!tradeP||p.id!==tradeP.id)),cleanTarget]};
       return t;
     });
     onUpdate({...career,teams:updTeams,transfers:[...career.transfers,record]});
-    setSel(null);setBid('');
+    resetBid();
   };
 
   const submitBid=()=>{
-    if(!sel||!bid)return;
-    const amt=parseInt(bid);if(isNaN(amt)||amt<=0)return;
-    const val=playerValue(sel,sel._team);
-    const pct=val>0?amt/val:0;
-    if(pct>=.90){doTrade(sel,sel._team,amt);setResult({type:'accepted',player:sel,amount:amt});}
+    if(!sel)return;
+    const cashAmt=parseInt(bid)||0;
+    const tradeVal=tradePlayer?playerValue(tradePlayer,myTeam):0;
+    if(cashAmt<=0&&!tradePlayer)return;
+    const totalOffer=cashAmt+tradeVal;
+    const targetVal=playerValue(sel,sel._team);
+    const pct=targetVal>0?totalOffer/targetVal:0;
+    if(pct>=.90){doTrade(sel,sel._team,cashAmt,tradePlayer);setResult({type:'accepted',player:sel,amount:cashAmt,tradePlayer});}
     else if(pct>=.65){
       const r=Math.random();
-      if(r<.30){doTrade(sel,sel._team,amt);setResult({type:'accepted',player:sel,amount:amt});}
-      else if(r<.65){const counter=Math.round(val*(.90+Math.random()*.10));setResult({type:'counter',player:sel,amount:amt,counter,selTeam:sel._team});}
-      else{setResult({type:'rejected',player:sel,amount:amt});}
-    }else{setResult({type:'flat',player:sel,amount:amt});}
+      const counterTotal=Math.round(targetVal*(.90+Math.random()*.10));
+      const counterCash=Math.max(0,counterTotal-tradeVal);
+      if(r<.30){doTrade(sel,sel._team,cashAmt,tradePlayer);setResult({type:'accepted',player:sel,amount:cashAmt,tradePlayer});}
+      else if(r<.65){resetBid();setResult({type:'counter',player:sel,counter:counterCash,selTeam:sel._team,tradePlayer});}
+      else{resetBid();setResult({type:'rejected',player:sel,amount:cashAmt});}
+    }else{resetBid();setResult({type:'flat',player:sel,amount:cashAmt});}
   };
 
   const toggleUntouchable=pid=>{
     const updTeams=career.teams.map(t=>t.id===career.myTeamId?{...t,players:t.players.map(p=>p.id===pid?{...p,untouchable:!p.untouchable}:p)}:t);
     onUpdate({...career,teams:updTeams});
   };
-  const acceptCpuBid=bid=>{
-    const{player,bidTeam,amount}=bid;
+  const removeCpuBid=b=>onUpdate({...career,cpuBids:(career.cpuBids||[]).filter(cb=>cb.id!==b.id)});
+  const acceptCpuBid=b=>{
+    const{player,bidTeam,amount}=b;
     const record={id:Date.now(),playerId:player.id,playerName:player.name,fromTeam:myTeam.name,toTeam:bidTeam.name,amount,matchWeek:career.matchWeek};
     const updTeams=career.teams.map(t=>{
       if(t.id===career.myTeamId)return{...t,careerBudget:(t.careerBudget||0)+amount,players:t.players.filter(p=>p.id!==player.id)};
       if(t.id===bidTeam.id)return{...t,careerBudget:(t.careerBudget||0)-amount,players:[...t.players,{...player,untouchable:false}]};
       return t;
     });
-    onUpdate({...career,teams:updTeams,transfers:[...career.transfers,record]});
+    onUpdate({...career,teams:updTeams,transfers:[...career.transfers,record],cpuBids:(career.cpuBids||[]).filter(cb=>cb.id!==b.id)});
   };
 
   const valDisplay=(p,team)=>{
@@ -2584,21 +2599,28 @@ function CareerTransferView({career,onUpdate}){
   };
 
   const resultColors={accepted:C.green,counter:C.gold,rejected:C.red,flat:C.red,no_budget:C.red};
-  const resultMsg=r=>r.type==='accepted'?`✓ Deal done! ${r.player.name} signed for £${r.amount}M`:r.type==='counter'?`Counter: they want £${r.counter}M`:r.type==='flat'?'✕ Bid too low — increase significantly':r.type==='no_budget'?`✕ Insufficient budget (need £${r.amount}M)`:r.type==='rejected'?'✕ Offer rejected':'' ;
+  const resultMsg=r=>{
+    if(r.type==='accepted'){const parts=[r.amount>0?`£${r.amount}M`:null,r.tradePlayer?`${r.tradePlayer.name}`:null].filter(Boolean);return`✓ Deal done! ${r.player.name} signed for ${parts.join(' + ')}`;}
+    if(r.type==='counter'){const parts=[r.counter>0?`£${r.counter}M`:null,r.tradePlayer?`+ ${r.tradePlayer.name}`:null].filter(Boolean);return`Counter: they want ${parts.join(' ')} for ${r.player.name}`;}
+    if(r.type==='flat')return'✕ Bid too low — increase offer or include a player';
+    if(r.type==='no_budget')return`✕ Insufficient budget (need £${r.amount}M cash)`;
+    if(r.type==='rejected')return'✕ Offer rejected';
+    return'';
+  };
 
   return(
     <div style={{paddingBottom:20}}>
       {cpuBids.length>0&&(
         <div style={{background:`${C.gold}15`,border:`1px solid ${C.gold}55`,borderRadius:10,padding:12,marginBottom:12}}>
           <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Incoming Offers</div>
-          {cpuBids.map((b,i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,padding:'8px 10px',background:C.card,borderRadius:7}}>
+          {cpuBids.map(b=>(
+            <div key={b.id} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6,padding:'8px 10px',background:C.card,borderRadius:7}}>
               <div style={{flex:1}}>
                 <div style={{fontSize:13,fontWeight:700,color:C.text}}>{b.player.name}</div>
                 <div style={{fontSize:10,color:C.muted}}>{b.bidTeam.name} offer £{b.amount}M</div>
               </div>
               <Btn onClick={()=>acceptCpuBid(b)} variant="success" small>Accept</Btn>
-              <Btn onClick={()=>{}} variant="secondary" small>Decline</Btn>
+              <Btn onClick={()=>removeCpuBid(b)} variant="secondary" small>Decline</Btn>
             </div>
           ))}
         </div>
@@ -2617,7 +2639,7 @@ function CareerTransferView({career,onUpdate}){
           {result&&(
             <div style={{background:`${resultColors[result.type]}22`,border:`1px solid ${resultColors[result.type]}55`,borderRadius:8,padding:'10px 12px',marginBottom:10,display:'flex',alignItems:'center',gap:10}}>
               <div style={{flex:1,fontSize:13,color:C.text,fontWeight:600}}>{resultMsg(result)}</div>
-              {result.type==='counter'&&<Btn onClick={()=>{doTrade(result.player,result.selTeam,result.counter);setResult(null);}} variant="success" small>Accept £{result.counter}M</Btn>}
+              {result.type==='counter'&&<Btn onClick={()=>{doTrade(result.player,result.selTeam,result.counter,result.tradePlayer);setResult(null);}} variant="success" small>Accept</Btn>}
               <button onClick={()=>setResult(null)} style={{background:'none',border:'none',color:C.muted,cursor:'pointer',fontSize:16}}>✕</button>
             </div>
           )}
@@ -2625,9 +2647,14 @@ function CareerTransferView({career,onUpdate}){
             {filtered.map(p=>{
               const isSel=sel?.id===p.id;
               const val=valDisplay(p,p._team);
+              const cashAmt=parseInt(bid)||0;
+              const tradeVal=tradePlayer?playerValue(tradePlayer,myTeam):0;
+              const totalOffer=cashAmt+tradeVal;
+              const targetVal=playerValue(p,p._team);
+              const canSubmit=cashAmt>0||!!tradePlayer;
               return(
                 <div key={p.id}>
-                  <div onClick={()=>{setSel(isSel?null:p);setBid('');setResult(null);}} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:isSel?`${C.accent}15`:C.card,border:`1px solid ${isSel?C.accent:C.border}`,borderRadius:isSel?'8px 8px 0 0':8,marginBottom:isSel?0:6,cursor:'pointer'}}>
+                  <div onClick={()=>{setSel(isSel?null:p);setBid('');setTradePlayer(null);setResult(null);}} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:isSel?`${C.accent}15`:C.card,border:`1px solid ${isSel?C.accent:C.border}`,borderRadius:isSel?'8px 8px 0 0':8,marginBottom:isSel?0:6,cursor:'pointer'}}>
                     <div style={{background:posColor(p.position)+'22',color:posColor(p.position),borderRadius:4,padding:'2px 6px',fontSize:10,fontWeight:700,flexShrink:0}}>{p.position}</div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</div>
@@ -2639,10 +2666,24 @@ function CareerTransferView({career,onUpdate}){
                     </div>
                   </div>
                   {isSel&&(
-                    <div style={{background:C.surface,border:`1px solid ${C.accent}`,borderTop:'none',borderRadius:'0 0 8px 8px',padding:'10px 12px',marginBottom:6,display:'flex',gap:8,alignItems:'center'}}>
-                      <div style={{fontSize:10,color:C.muted,flexShrink:0}}>Bid (£M)</div>
-                      <input value={bid} onChange={e=>setBid(e.target.value)} type="number" min="1" placeholder="0" style={{flex:1,background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 8px',color:C.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:'none'}}/>
-                      <Btn onClick={submitBid} small>Submit Bid</Btn>
+                    <div style={{background:C.surface,border:`1px solid ${C.accent}`,borderTop:'none',borderRadius:'0 0 8px 8px',padding:'12px',marginBottom:6}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                        <span style={{fontSize:10,color:C.muted,flexShrink:0,width:52}}>Cash (£M)</span>
+                        <input value={bid} onChange={e=>setBid(e.target.value)} type="number" min="0" placeholder="0" style={{flex:1,background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 8px',color:C.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:'none'}}/>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+                        <span style={{fontSize:10,color:C.muted,flexShrink:0,width:52}}>Include</span>
+                        <select value={tradePlayer?.id||''} onChange={e=>{const found=(myTeam?.players||[]).find(mp=>mp.id===e.target.value);setTradePlayer(found||null);}} style={{flex:1,background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:'6px 8px',color:tradePlayer?C.text:C.muted,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:'none'}}>
+                          <option value=''>No player</option>
+                          {(myTeam?.players||[]).map(mp=><option key={mp.id} value={mp.id}>{mp.name} ({mp.position}) — £{playerValue(mp,myTeam)}M</option>)}
+                        </select>
+                      </div>
+                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                        <span style={{fontSize:11,color:totalOffer>=targetVal*.9?C.green:totalOffer>=targetVal*.65?C.gold:C.muted}}>
+                          Total £{totalOffer}M vs £{targetVal}M
+                        </span>
+                        <Btn onClick={submitBid} small disabled={!canSubmit}>Submit Bid</Btn>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2711,7 +2752,8 @@ function genCareerNews(career){
   }
   if(career.transfers.length>0){
     const t=[...career.transfers].reverse()[0];
-    articles.push({id:'transfer',tag:'TRANSFER',tagColor:C.accent,title:`${t.playerName} moves on`,body:`${t.playerName} completed a transfer from ${t.fromTeam} to ${t.toTeam} for £${t.amount}M in Matchweek ${t.matchWeek}.`});
+    const dealStr=[t.amount>0?`£${t.amount}M`:null,t.tradePlayerName?`${t.tradePlayerName} (swap)`:null].filter(Boolean).join(' + ')||'a swap deal';
+    articles.push({id:'transfer',tag:'TRANSFER',tagColor:C.accent,title:`${t.playerName} moves on`,body:`${t.playerName} completed a transfer from ${t.fromTeam} to ${t.toTeam} for ${dealStr} in Matchweek ${t.matchWeek}.`});
   }
   const myMoods=career.playerMoods||{};
   const unhappy=(myTeam?.players||[]).filter(p=>(myMoods[p.id]??65)<40).sort((a,b)=>(myMoods[a.id]??65)-(myMoods[b.id]??65));
