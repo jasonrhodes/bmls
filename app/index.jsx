@@ -2711,6 +2711,12 @@ function genCareerNews(career){
       articles.push({id:'mood_good',tag:'SQUAD HARMONY',tagColor:C.green,title:`High spirits at ${myName}`,body:`${happy} players are in excellent spirits at the club. Strong morale is translating into performances on the pitch.`});
     }
   }
+  const injured=(myTeam?.players||[]).filter(p=>p.injured);
+  if(injured.length>0){
+    const names=injured.map(p=>p.name);
+    const list=names.length===1?names[0]:names.length===2?`${names[0]} and ${names[1]}`:`${names.slice(0,-1).join(', ')} and ${names[names.length-1]}`;
+    articles.push({id:'injury',tag:'INJURY',tagColor:'#F97316',title:`${injured.length===1?list+' sidelined':`${injured.length} players out injured`}`,body:`${list} ${injured.length===1?'is':'are'} sidelined through injury and will miss the next fixture. The manager will need to reshuffle the squad.`});
+  }
   if(articles.length===0)articles.push({id:'empty',tag:'WELCOME',tagColor:C.muted,title:'Career mode — day one',body:`${myName} are ready for the season. Set your lineup and play your first match to get things started.`});
   return articles;
 }
