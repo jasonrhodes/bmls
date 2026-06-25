@@ -3375,7 +3375,42 @@ function PlayoffsTab({teams,fixtures}){
       </div>
     );
   };
-  if(!seasonDone&&!bracket)return<div style={{textAlign:'center',paddingTop:48,color:C.muted,fontSize:13,lineHeight:1.8}}>Playoffs unlock once all regular season fixtures are played.</div>;
+  if(!seasonDone&&!bracket){
+    const seeds=table.slice(0,7);
+    if(seeds.length<7)return<div style={{textAlign:'center',paddingTop:48,color:C.muted,fontSize:13,lineHeight:1.8}}>Playoffs unlock once all regular season fixtures are played.</div>;
+    return(
+      <div style={{paddingBottom:20}}>
+        <div style={{background:`${C.accent}11`,border:`1px solid ${C.accent}33`,borderRadius:8,padding:'8px 12px',marginBottom:14,display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize:9,color:C.accent,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',background:`${C.accent}22`,borderRadius:3,padding:'2px 6px'}}>Preview</span>
+          <span style={{fontSize:11,color:C.muted}}>Based on current standings — updates as results come in</span>
+        </div>
+        <div style={{background:C.card,border:`1px solid ${C.gold}44`,borderRadius:10,padding:16,marginBottom:16}}>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:C.gold,letterSpacing:2,marginBottom:8}}>Playoff Seedings</div>
+          {seeds.map((t,i)=>(
+            <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'6px 0',borderBottom:`1px solid ${C.border}`}}>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:i===0?C.accent:C.green,width:20}}>{i+1}</span>
+              <TeamBadge color={t.color} crest={t.crest} size={18}/>
+              <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{t.name}</span>
+              <span style={{fontSize:11,color:C.muted}}>{t.pts}pts</span>
+              {i===0&&<span style={{fontSize:9,color:C.accent,fontWeight:700,background:`${C.accent}22`,borderRadius:3,padding:'2px 5px'}}>BYE</span>}
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:8}}>Quarter Finals</div>
+        {[[1,6,'2nd vs 7th'],[2,5,'3rd vs 6th'],[3,4,'4th vs 5th']].map(([a,b,lbl])=>(
+          <div key={lbl} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',marginBottom:6}}>
+            <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:6}}>{lbl}</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:6}}>
+              <div style={{textAlign:'right',fontSize:12,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{seeds[a].name}</div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.border,letterSpacing:3,textAlign:'center',padding:'0 6px'}}>vs</div>
+              <div style={{fontSize:12,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{seeds[b].name}</div>
+            </div>
+          </div>
+        ))}
+        <div style={{fontSize:11,color:C.muted,textAlign:'center',marginTop:12,fontStyle:'italic'}}>Full bracket generates once the regular season is complete.</div>
+      </div>
+    );
+  }
   if(!bracket){
     return(
       <div style={{paddingBottom:20}}>
