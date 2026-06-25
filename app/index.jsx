@@ -9,6 +9,7 @@ const C={
 
 const POSITIONS=["GK","DEF","MDF","FWD"];
 const posColor=p=>p==="GK"?C.gold:p==="DEF"?C.green:p==="MDF"?C.accent:p==="FWD"?C.red:C.muted;
+const isLight=hex=>{try{const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return(r*299+g*587+b*114)/1000>140;}catch{return false;}};
 
 const FORMATIONS=[
   {id:"2-2-1",label:"2-2-1",def:2,mdf:2,fwd:1},
@@ -325,9 +326,7 @@ function MatchSimPanel({fixture,home,away,fixtures,sim,onSimulate,onApply}){
           {running&&<div style={{height:2,background:C.surface,borderRadius:1,marginBottom:6,overflow:"hidden"}}><div style={{height:"100%",background:C.accent,width:`${(minute/90)*100}%`,transition:"width 0.9s linear"}}/></div>}
           {running&&<div style={{display:"flex",gap:5,marginBottom:8,justifyContent:"center"}}>{[1,2,5].map(s=><button key={s} onClick={()=>setSpeed(s)} style={{background:speed===s?`${C.accent}22`:"transparent",color:speed===s?C.accent:C.muted,border:`1px solid ${speed===s?C.accent:C.border}`,borderRadius:4,padding:"3px 10px",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{s}×</button>)}</div>}
           <div ref={feedRef} style={{marginBottom:10,borderTop:`1px solid ${C.border}`,borderBottom:`1px solid ${C.border}`,padding:"10px 0",maxHeight:200,overflowY:"auto"}}>
-            {shown.length===0
-              ?<div style={{fontSize:11,color:C.muted,textAlign:"center",fontStyle:"italic",padding:"8px 0"}}>Waiting for kick off…</div>
-              :shown.map((e,i)=>{
+            {shown.map((e,i)=>{
                 const isH=e.team==="home";
                 const main=evMain(e),sub2=evSub(e);
                 return(
@@ -927,7 +926,7 @@ function SquadsTab({teams,setTeams}){
   return(
     <div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
-        {named.map(t=><button key={t.id} onClick={()=>setSelId(t.id)} style={{background:selId===t.id?t.color:C.card,color:selId===t.id?"#000":C.sub,border:`1px solid ${selId===t.id?t.color:C.border}`,borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{t.name}</button>)}
+        {named.map(t=><button key={t.id} onClick={()=>setSelId(t.id)} style={{background:selId===t.id?t.color:C.card,color:selId===t.id?(isLight(t.color)?'#000':'#fff'):C.sub,border:`1px solid ${selId===t.id?t.color:C.border}`,borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{t.name}</button>)}
       </div>
       {!team&&<Empty icon="👆" msg="Select a team above." hint=""/>}
       {team&&<div>
@@ -2638,29 +2637,23 @@ function CareerSimView({career,onMatchComplete}){
       else if(!p.injured&&!p.suspended){delta-=5;if(myRes==='L')delta-=1;}
       updMoods[p.id]=Math.max(0,Math.min(100,Math.round((cur+delta)+(65-(cur+delta))*0.08)));
     });
-    // Transfer window MW1–3: CPU-CPU trades (up to 2) + new incoming bids for user
-    if(career.matchWeek<=3){
-      for(let ti=0;ti<2;ti++){
-        const cpuTrade=maybeDoCpuTrade(career,updated.teams);
-        if(cpuTrade){
-          const{player,seller,buyer,amount,swapPlayer}=cpuTrade;
-          updated={...updated,teams:updated.teams.map(t=>{
-            if(t.id===seller.id)return{...t,careerBudget:(t.careerBudget||0)+amount,players:[...t.players.filter(p=>p.id!==player.id),{...swapPlayer,untouchable:false,lastTradedMW:career.matchWeek}]};
-            if(t.id===buyer.id)return{...t,careerBudget:(t.careerBudget||0)-amount,players:[...t.players.filter(p=>p.id!==swapPlayer.id),{...player,untouchable:false,lastTradedMW:career.matchWeek}]};
-            return t;
-          })};
-          updated={...updated,transfers:[...(updated.transfers||[]),{id:Date.now()+ti+1,playerName:player.name,fromTeam:seller.name,toTeam:buyer.name,amount,swapPlayerName:swapPlayer.name,matchWeek:career.matchWeek,cpuTrade:true}]};
-        }
-      }
-      if(career.matchWeek<3){
-        const updMyTeam=updated.teams.find(t=>t.id===career.myTeamId);
-        const newBid=maybeAddCpuBid(career,updated.teams,updMyTeam);
-        if(newBid)updated={...updated,cpuBids:[...(updated.cpuBids||[]),newBid]};
+    // CPU-CPU trades (up to 2 per matchweek) + new incoming bids for user
+    for(let ti=0;ti<2;ti++){
+      const cpuTrade=maybeDoCpuTrade(career,updated.teams);
+      if(cpuTrade){
+        const{player,seller,buyer,amount,swapPlayer}=cpuTrade;
+        updated={...updated,teams:updated.teams.map(t=>{
+          if(t.id===seller.id)return{...t,careerBudget:(t.careerBudget||0)+amount,players:[...t.players.filter(p=>p.id!==player.id),{...swapPlayer,untouchable:false,lastTradedMW:career.matchWeek}]};
+          if(t.id===buyer.id)return{...t,careerBudget:(t.careerBudget||0)-amount,players:[...t.players.filter(p=>p.id!==swapPlayer.id),{...player,untouchable:false,lastTradedMW:career.matchWeek}]};
+          return t;
+        })};
+        updated={...updated,transfers:[...(updated.transfers||[]),{id:Date.now()+ti+1,playerName:player.name,fromTeam:seller.name,toTeam:buyer.name,amount,swapPlayerName:swapPlayer.name,matchWeek:career.matchWeek,cpuTrade:true}]};
       }
     }
-    // Window closes after MW3 — clear any unresolved CPU bids
-    const nextCpuBids=career.matchWeek>=3?[]:(updated.cpuBids||[]);
-    onMatchComplete({...updated,playerStats:merged,playerMoods:updMoods,cpuBids:nextCpuBids,matchWeek:career.matchWeek+1,phase:'lineup'});
+    const updMyTeam=updated.teams.find(t=>t.id===career.myTeamId);
+    const newBid=maybeAddCpuBid(career,updated.teams,updMyTeam);
+    if(newBid)updated={...updated,cpuBids:[...(updated.cpuBids||[]),newBid]};
+    onMatchComplete({...updated,playerStats:merged,playerMoods:updMoods,cpuBids:updated.cpuBids||[],matchWeek:career.matchWeek+1,phase:'lineup'});
   };
 
   const ico=t=>t==='goal'?'⚽':t==='yellow'?'🟡':t==='sub'?'🔄':t==='injury'?'🤕':'🟥';
@@ -2692,7 +2685,7 @@ function CareerSimView({career,onMatchComplete}){
           {running&&<div style={{height:3,background:C.surface,borderRadius:2,marginBottom:8,overflow:'hidden'}}><div style={{height:'100%',background:C.accent,width:`${(minute/90)*100}%`,transition:'width 0.9s linear'}}/></div>}
           {running&&<div style={{display:'flex',gap:6,marginBottom:8,justifyContent:'center'}}>{[1,2,5].map(s=><button key={s} onClick={()=>setSpeed(s)} style={{background:speed===s?`${C.accent}22`:'transparent',color:speed===s?C.accent:C.muted,border:`1px solid ${speed===s?C.accent:C.border}`,borderRadius:5,padding:'4px 12px',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{s}×</button>)}</div>}
           <div ref={feedRef} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,minHeight:120,maxHeight:260,overflowY:'auto'}}>
-            {shown.length===0?<div style={{fontSize:11,color:C.muted,textAlign:'center',fontStyle:'italic',padding:'24px 0'}}>Waiting for kick off…</div>:shown.map((e,i)=>{
+            {shown.map((e,i)=>{
               const isH=e.team==='home';
               const main=evMain(e),sub2=evSub(e);
               return(
@@ -3032,8 +3025,7 @@ function CareerTransferView({career,onUpdate}){
       </div>
       {pane==='market'&&(
         <div>
-          {!windowOpen&&<div style={{background:`${C.muted}18`,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',marginBottom:12,fontSize:12,color:C.muted,textAlign:'center',fontWeight:600}}>Transfer window closed after MW3 — deals resume next season</div>}
-          <div style={{opacity:windowOpen?1:0.4,pointerEvents:windowOpen?'auto':'none'}}>
+          <div>
           <div style={{display:'flex',gap:6,marginBottom:8}}>
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search players…" style={{flex:1,background:C.card,border:`1px solid ${C.border}`,borderRadius:7,padding:'7px 10px',color:C.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:'none'}}/>
             <select value={posFilter} onChange={e=>setPosFilter(e.target.value)} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:7,padding:'7px 8px',color:C.muted,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:'none'}}>
