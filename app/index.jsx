@@ -2575,20 +2575,34 @@ function genPreseasonBids(teams,myTeamId,myTeam){
 
 function maybeDoCpuTrade(career,teams){
   if(Math.random()>0.18)return null;
-  const sellers=teams.filter(t=>t.id!==career.myTeamId&&t.name&&t.players.length>=6);
-  if(!sellers.length)return null;
-  const seller=sellers[Math.floor(Math.random()*sellers.length)];
-  const tradeable=seller.players.filter(p=>p.position!=='GK'&&(p.score||0)>=5);
-  if(!tradeable.length)return null;
-  const player=tradeable[Math.floor(Math.random()*tradeable.length)];
-  const amount=Math.round(playerValue(player,seller)*(0.80+Math.random()*.25));
-  const buyers=teams.filter(t=>t.id!==career.myTeamId&&t.id!==seller.id&&t.name&&t.players.length>=6&&(t.careerBudget||0)>=amount);
-  if(!buyers.length)return null;
-  const buyer=buyers[Math.floor(Math.random()*buyers.length)];
-  const buyerOutfield=buyer.players.filter(p=>p.position!=='GK').sort((a,b)=>(a.score||0)-(b.score||0));
-  if(!buyerOutfield.length)return null;
-  const swapPlayer=buyerOutfield[0];
-  return{player,seller,buyer,amount,swapPlayer};
+  const eligible=teams.filter(t=>t.id!==career.myTeamId&&t.name&&t.players.length>=6);
+  if(eligible.length<2)return null;
+  const sh=a=>[...a].sort(()=>Math.random()-.5);
+  const quality=p=>p.position==='MDF'?Math.max(p.mdfAtkScore||0,p.mdfDefScore||0):(p.score||0);
+  const atkScore=p=>p.position==='FWD'?(p.score||0):p.position==='MDF'?(p.mdfAtkScore||0):0;
+  const defScore=p=>p.position==='DEF'?(p.score||0):p.position==='MDF'?(p.mdfDefScore||0):0;
+  for(const buyer of sh(eligible)){
+    const{atk,def}=lineupRatings(buyer);
+    const needsAtk=atk<def||(atk===def&&Math.random()<.5);
+    // Find target player from a different team in the area buyer needs
+    const targetFilter=needsAtk
+      ?(p=>p.position!=='GK'&&(p.position==='FWD'||(p.position==='MDF'&&(p.mdfAtkScore||0)>=6))&&atkScore(p)>=6)
+      :(p=>p.position!=='GK'&&(p.position==='DEF'||(p.position==='MDF'&&(p.mdfDefScore||0)>=6))&&defScore(p)>=6);
+    for(const seller of sh(eligible.filter(t=>t.id!==buyer.id))){
+      const targets=seller.players.filter(targetFilter).sort((a,b)=>(needsAtk?atkScore(b)-atkScore(a):defScore(b)-defScore(a)));
+      if(!targets.length)continue;
+      const player=targets[0];
+      const amount=Math.round(playerValue(player,seller)*(0.80+Math.random()*.25));
+      if((buyer.careerBudget||0)<amount)continue;
+      // Swap: prefer same position as target, fall back to worst outfield
+      const samePos=buyer.players.filter(p=>p.position===player.position&&p.position!=='GK').sort((a,b)=>quality(a)-quality(b));
+      const anyOut=buyer.players.filter(p=>p.position!=='GK').sort((a,b)=>quality(a)-quality(b));
+      const swapPool=samePos.length>0?samePos:anyOut;
+      if(!swapPool.length)continue;
+      return{player,seller,buyer,amount,swapPlayer:swapPool[0]};
+    }
+  }
+  return null;
 }
 
 function CareerTransferView({career,onUpdate}){
