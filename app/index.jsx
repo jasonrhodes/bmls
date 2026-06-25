@@ -3401,9 +3401,15 @@ function PlayoffsTab({teams,fixtures}){
           <div key={lbl} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',marginBottom:6}}>
             <div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:6}}>{lbl}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:6}}>
-              <div style={{textAlign:'right',fontSize:12,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{seeds[a].name}</div>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:5,overflow:'hidden'}}>
+                <div style={{fontSize:12,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{seeds[a].name}</div>
+                <TeamBadge color={seeds[a].color} crest={seeds[a].crest} size={16}/>
+              </div>
               <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.border,letterSpacing:3,textAlign:'center',padding:'0 6px'}}>vs</div>
-              <div style={{fontSize:12,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{seeds[b].name}</div>
+              <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden'}}>
+                <TeamBadge color={seeds[b].color} crest={seeds[b].crest} size={16}/>
+                <div style={{fontSize:12,fontWeight:600,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{seeds[b].name}</div>
+              </div>
             </div>
           </div>
         ))}
