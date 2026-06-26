@@ -68,10 +68,13 @@ const wcAstW=(p,sid)=>{if(p.id===sid)return 0;const s=p._slot||p.position;return
 // For n≤7 outfield players and 5 slots, P(n,5)≤2520 per formation — fast enough.
 function pickWCLineup(nation){
   if(!nation)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
-  // Deduplicate by id first — a player added from BMLS keeps their original id,
-  // so double-adds (fast click) produce duplicate ids that break the bench filter.
+  // Deduplicate by id and normalise string fields — trailing spaces on position
+  // cause p.position==='MDF' to silently fail, dropping the player to the
+  // last-resort 0.3× branch instead of the correct (mdfAtk+mdfDef)/2 score.
   const seen=new Set();
-  const ps=nation.players.filter(p=>p.name&&p.name.trim()&&p.id!=null&&!seen.has(p.id)&&seen.add(p.id));
+  const ps=nation.players
+    .filter(p=>p.name&&p.name.trim()&&p.id!=null&&!seen.has(p.id)&&seen.add(p.id))
+    .map(p=>({...p,name:p.name.trim(),position:(p.position||'').trim()}));
   if(!ps.length)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
   let gk=ps.find(p=>p.position==='GK');
   // Exclude only the selected GK by id, NOT all GK-positioned players.
