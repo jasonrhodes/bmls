@@ -7,6 +7,12 @@ const C={
   muted:"#64748B",sub:"#94A3B8",text:"#E2E8F0",white:"#F8FAFC",purple:"#A855F7"
 };
 const POSITIONS=["GK","DEF","MDF","FWD"];
+const WC_FORMATIONS=[
+  {name:'2-2-1',def:2,mdf:2,fwd:1,bias:0},
+  {name:'2-1-2',def:2,mdf:1,fwd:2,bias:0},
+  {name:'2-0-3',def:2,mdf:0,fwd:3,bias:0},
+  {name:'3-1-1',def:3,mdf:1,fwd:1,bias:-4},
+];
 const posColor=p=>p==="GK"?C.gold:p==="DEF"?C.green:p==="MDF"?C.accent:p==="FWD"?C.red:C.muted;
 const MANAGE_PASSWORD='BMLSeditor';
 const WC_CAREER_KEY='bmls_wc_career';
@@ -54,8 +60,27 @@ function lineupRatings(nation){
 
 const wcPois=λ=>{const L=Math.exp(-Math.min(λ,8));let k=0,p=1;do{k++;p*=Math.random();}while(p>L);return k-1;};
 const wcWPick=(items,wFn)=>{const ws=items.map(wFn),tot=ws.reduce((s,w)=>s+w,0);if(tot<=0)return items[Math.floor(Math.random()*items.length)];let r=Math.random()*tot;for(let i=0;i<items.length;i++){r-=ws[i];if(r<=0)return items[i];}return items[items.length-1];};
-const wcScorW=p=>p.position==='FWD'?(p.score||5)*3:p.position==='MDF'?(p.mdfAtkScore||5)*1.5:(p.position==='DEF'&&p.wide)?(p.score||5)*1.2:0.1;
-const wcAstW=(p,sid)=>p.id===sid?0:p.position==='MDF'?(p.mdfAtkScore||5)*2.5:p.position==='FWD'?(p.score||5)*1.5:0.3;
+// Slot-aware: uses _slot assigned by pickWCLineup, falls back to natural position
+const wcScorW=p=>{const s=p._slot||p.position;return s==='FWD'?(p.score||5)*3:s==='MDF'?(p.mdfAtkScore||p.score||5)*1.5:0.1;};
+const wcAstW=(p,sid)=>{if(p.id===sid)return 0;const s=p._slot||p.position;return s==='MDF'?(p.mdfAtkScore||p.score||5)*2.5:s==='FWD'?(p.score||5)*1.5:0.3;};
+
+// Try all formations, pick the one that maximises lineup quality
+function pickWCLineup(nation){
+  if(!nation)return{formation:WC_FORMATIONS[0],gk:null,starters:[]};
+  const ps=nation.players.filter(p=>p.name);
+  const gk=ps.find(p=>p.position==='GK');
+  const out=ps.filter(p=>p.position!=='GK');
+  const sD=p=>p.position==='DEF'&&!p.wide?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.7:p.position==='MDF'?(p.mdfDefScore||5)*0.6:0;
+  const sM=p=>p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:p.position==='FWD'?(p.score||5)*0.55:p.position==='DEF'?(p.mdfDefScore||p.score||5)*0.5:0;
+  const sF=p=>p.position==='FWD'?(p.score||5):(p.position==='DEF'&&p.wide)?(p.score||5)*0.8:p.position==='MDF'?(p.mdfAtkScore||5)*0.65:0;
+  const tryForm=f=>{
+    const used=new Set(),picks=[];let tot=0;
+    const fill=(n,sFn,slot)=>{const sorted=[...out].sort((a,b)=>sFn(b)-sFn(a));for(let i=0;i<n;i++){const p=sorted.find(x=>!used.has(x.id));if(p){used.add(p.id);picks.push({...p,_slot:slot});tot+=sFn(p);}}};
+    fill(f.def,sD,'DEF');fill(f.mdf,sM,'MDF');fill(f.fwd,sF,'FWD');
+    return{formation:f,gk,starters:picks,total:tot+(f.bias||0)};
+  };
+  return WC_FORMATIONS.reduce((best,f)=>{const r=tryForm(f);return r.total>best.total?r:best;},tryForm(WC_FORMATIONS[0]));
+}
 
 function simWCMatch(home,away){
   const hr=lineupRatings(home),ar=lineupRatings(away);
@@ -69,54 +94,23 @@ function simWCMatchWithEvents(home,away){
   const axg=Math.max(0.1,ar.atk*0.14+(10-hr.def)*0.09+0.25);
   const hGoals=wcPois(hxg),aGoals=wcPois(axg);
   const mnt=()=>Math.floor(Math.random()*90)+1;
-  const genGoals=(n,players,team)=>{
-    const out=players.filter(p=>p.name&&p.position!=='GK');
-    if(!out.length||n===0)return[];
+  const hLU=pickWCLineup(home),aLU=pickWCLineup(away);
+  const genGoals=(n,starters,team)=>{
+    if(!starters.length||n===0)return[];
     return Array.from({length:n},()=>{
-      const scorer=wcWPick(out,wcScorW);
-      const astCands=out.filter(p=>p.id!==scorer.id);
+      const scorer=wcWPick(starters,wcScorW);
+      const astCands=starters.filter(p=>p.id!==scorer.id);
       const assist=Math.random()<0.72&&astCands.length?wcWPick(astCands,p=>wcAstW(p,scorer.id)):null;
       return{type:'goal',team,player:scorer,assist,minute:mnt()};
     }).sort((a,b)=>a.minute-b.minute);
   };
-  const events=[...genGoals(hGoals,home.players,'home'),...genGoals(aGoals,away.players,'away')].sort((a,b)=>a.minute-b.minute);
+  const events=[...genGoals(hGoals,hLU.starters,'home'),...genGoals(aGoals,aLU.starters,'away')].sort((a,b)=>a.minute-b.minute);
   return{hGoals,aGoals,events};
-}
-function simWCKnockoutWithEvents(home,away){
-  let r=simWCMatchWithEvents(home,away);
-  if(r.hGoals===r.aGoals){
-    const et=Math.random()<0.5?{hGoals:r.hGoals+1,awayScoreEt:false}:{aGoals:r.aGoals+1,awayScoreEt:true};
-    r=et.awayScoreEt?{...r,aGoals:r.aGoals+1,et:true}:{...r,hGoals:r.hGoals+1,et:true};
-  }
-  return r;
 }
 function simWCKnockout(home,away){
   const r=simWCMatch(home,away);
   if(r.hGoals===r.aGoals)return Math.random()<0.5?{...r,hGoals:r.hGoals+1,et:true}:{...r,aGoals:r.aGoals+1,et:true};
   return r;
-}
-
-function predictWCLineup(nation){
-  const ps=nation.players.filter(p=>p.name);
-  const gk=ps.find(p=>p.position==='GK');
-  const outfield=ps.filter(p=>p.position!=='GK');
-  // Score each player for overall effectiveness; wide DEFs are eligible as attackers
-  const scored=outfield.map(p=>{
-    const atk=p.position==='FWD'?p.score:p.position==='MDF'?p.mdfAtkScore:(p.wide?p.score*0.85:0);
-    const def=p.position==='DEF'?p.score:p.position==='MDF'?p.mdfDefScore:0;
-    return{...p,_atk:atk,_def:def,_eff:(atk+def)/2,_displayPos:p.position==='DEF'&&p.wide?'ATK':p.position};
-  }).sort((a,b)=>b._eff-a._eff);
-  // Ensure at least one DEF if possible
-  const picks=[],used=new Set();
-  const bestDef=scored.find(p=>p.position==='DEF'&&!p.wide);
-  if(bestDef){picks.push(bestDef);used.add(bestDef.id);}
-  // Ensure at least one FWD-equivalent
-  const bestFwd=scored.find(p=>(p.position==='FWD'||(p.position==='DEF'&&p.wide))&&!used.has(p.id));
-  if(bestFwd){picks.push(bestFwd);used.add(bestFwd.id);}
-  // Fill remaining slots by effectiveness
-  for(const p of scored){if(picks.length>=5)break;if(!used.has(p.id)){picks.push(p);used.add(p.id);}}
-  const bench=outfield.filter(p=>!used.has(p.id)&&p.id!==gk?.id);
-  return{gk,starters:picks.slice(0,5),bench};
 }
 
 // Group match pairs: index into group's nationIds array
@@ -191,19 +185,52 @@ function ManagePasswordModal({onSuccess,onCancel}){
   );
 }
 
-function LineupPreview({nation,side='left'}){
-  if(!nation)return null;
-  const{gk,starters}=predictWCLineup(nation);
-  const all=[...(gk?[{...gk,_displayPos:'GK'}]:[]),...starters];
-  if(!all.length)return null;
+function PitchView({homeNation,awayNation}){
+  if(!homeNation||!awayNation)return null;
+  const hLU=pickWCLineup(homeNation);
+  const aLU=pickWCLineup(awayNation);
+  const Dot=({p,color})=>(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,minWidth:34}}>
+      <div style={{width:26,height:26,borderRadius:'50%',background:color||'#333',border:'2px solid rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:6,fontWeight:800,color:'#fff',textShadow:'0 1px 2px #0008',letterSpacing:0}}>
+        {p._slot||p.position}
+      </div>
+      <span style={{fontSize:7.5,color:'rgba(255,255,255,0.65)',maxWidth:38,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'center',lineHeight:1.2}}>
+        {p.name.split(' ').pop()}
+      </span>
+    </div>
+  );
+  const Row=({players,color})=>players.length?(
+    <div style={{display:'flex',justifyContent:'center',gap:2,padding:'2px 0'}}>{players.map(p=><Dot key={p.id} p={p} color={color}/>)}</div>
+  ):null;
+  // Away: GK at top descending to FWD toward center
+  const aGk=aLU.gk?[{...aLU.gk,_slot:'GK'}]:[];
+  const aDef=aLU.starters.filter(p=>p._slot==='DEF');
+  const aMdf=aLU.starters.filter(p=>p._slot==='MDF');
+  const aFwd=aLU.starters.filter(p=>p._slot==='FWD');
+  // Home: FWD toward center, GK at bottom
+  const hFwd=hLU.starters.filter(p=>p._slot==='FWD');
+  const hMdf=hLU.starters.filter(p=>p._slot==='MDF');
+  const hDef=hLU.starters.filter(p=>p._slot==='DEF');
+  const hGk=hLU.gk?[{...hLU.gk,_slot:'GK'}]:[];
   return(
-    <div style={{display:'flex',flexWrap:'wrap',gap:3,justifyContent:side==='right'?'flex-end':'flex-start',marginTop:4}}>
-      {all.map(p=>(
-        <div key={p.id} style={{background:posColor(p._displayPos||p.position)+'22',color:posColor(p._displayPos||p.position),borderRadius:4,padding:'2px 5px',fontSize:9,fontWeight:700,display:'flex',gap:3,alignItems:'center'}}>
-          <span style={{opacity:0.7}}>{p._displayPos||p.position}</span>
-          <span style={{color:C.sub,fontWeight:400}}>{p.name.split(' ').pop()}</span>
-        </div>
-      ))}
+    <div style={{background:'#091a09',border:'1px solid #152e15',borderRadius:8,padding:'8px 4px',marginTop:8,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:2,paddingLeft:8}}>
+        <TeamBadge color={awayNation.color||C.border} crest={awayNation.crest} size={10}/>
+        <span style={{fontSize:7.5,color:'rgba(255,255,255,0.4)',letterSpacing:1.5,textTransform:'uppercase'}}>{awayNation.name} · {aLU.formation.name}</span>
+      </div>
+      <Row players={aGk} color={awayNation.color}/>
+      <Row players={aDef} color={awayNation.color}/>
+      <Row players={aMdf} color={awayNation.color}/>
+      <Row players={aFwd} color={awayNation.color}/>
+      <div style={{height:1,background:'rgba(255,255,255,0.1)',margin:'5px 16px'}}/>
+      <Row players={hFwd} color={homeNation.color}/>
+      <Row players={hMdf} color={homeNation.color}/>
+      <Row players={hDef} color={homeNation.color}/>
+      <Row players={hGk} color={homeNation.color}/>
+      <div style={{display:'flex',alignItems:'center',gap:4,marginTop:2,justifyContent:'flex-end',paddingRight:8}}>
+        <span style={{fontSize:7.5,color:'rgba(255,255,255,0.4)',letterSpacing:1.5,textTransform:'uppercase'}}>{homeNation.name} · {hLU.formation.name}</span>
+        <TeamBadge color={homeNation.color||C.border} crest={homeNation.crest} size={10}/>
+      </div>
     </div>
   );
 }
@@ -508,23 +535,18 @@ function GroupCard({group,nations,groupMatches,onResult}){
           const sr=simResult[mid];
           return(
             <div key={idx} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',marginBottom:8}}>
-              <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:8}}>
-                <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',overflow:'hidden'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:5}}>
-                    <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{hNation?.name||'?'}</span>
-                    <TeamBadge color={hNation?.color||C.border} crest={hNation?.crest} size={16}/>
-                  </div>
-                  <LineupPreview nation={hNation} side="right"/>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden'}}>
+                  <TeamBadge color={hNation?.color||C.border} crest={hNation?.crest} size={16}/>
+                  <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{hNation?.name||'?'}</span>
                 </div>
-                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:C.muted,letterSpacing:2,textAlign:'center'}}>vs</span>
-                <div style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
-                  <div style={{display:'flex',alignItems:'center',gap:5}}>
-                    <TeamBadge color={aNation?.color||C.border} crest={aNation?.crest} size={16}/>
-                    <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{aNation?.name||'?'}</span>
-                  </div>
-                  <LineupPreview nation={aNation} side="left"/>
+                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:C.muted,letterSpacing:2,flexShrink:0,margin:'0 8px'}}>vs</span>
+                <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden',flexDirection:'row-reverse'}}>
+                  <TeamBadge color={aNation?.color||C.border} crest={aNation?.crest} size={16}/>
+                  <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{aNation?.name||'?'}</span>
                 </div>
               </div>
+              {hNation&&aNation&&<PitchView homeNation={hNation} awayNation={aNation}/>}
               {!sr&&<>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 20px 1fr',gap:4,alignItems:'center',marginTop:10,marginBottom:8}}>
                   <input type="number" min="0" value={hv} onChange={e=>setHi(x=>({...x,[mid]:e.target.value}))} placeholder="0" style={inp}/>
@@ -627,23 +649,18 @@ function KnockoutMatchCard({match,nations,onResult,disabled}){
   const doSim=()=>{if(hN&&aN){let r=simWCMatchWithEvents(hN,aN);if(r.hGoals===r.aGoals)r=Math.random()<0.5?{...r,hGoals:r.hGoals+1,et:true}:{...r,aGoals:r.aGoals+1,et:true};setSimResult(r);}};
   return(
     <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 14px',marginBottom:8,opacity:disabled?0.6:1}}>
-      <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:8}}>
-        <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',overflow:'hidden'}}>
-          <div style={{display:'flex',alignItems:'center',gap:5}}>
-            <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{hN?.name||'TBD'}</span>
-            <TeamBadge color={hN?.color||C.border} crest={hN?.crest} size={16}/>
-          </div>
-          {hN&&<LineupPreview nation={hN} side="right"/>}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden'}}>
+          <TeamBadge color={hN?.color||C.border} crest={hN?.crest} size={16}/>
+          <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{hN?.name||'TBD'}</span>
         </div>
-        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:C.muted,letterSpacing:2,flexShrink:0}}>vs</span>
-        <div style={{display:'flex',flexDirection:'column',overflow:'hidden'}}>
-          <div style={{display:'flex',alignItems:'center',gap:5}}>
-            <TeamBadge color={aN?.color||C.border} crest={aN?.crest} size={16}/>
-            <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{aN?.name||'TBD'}</span>
-          </div>
-          {aN&&<LineupPreview nation={aN} side="left"/>}
+        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:C.muted,letterSpacing:2,flexShrink:0,margin:'0 8px'}}>vs</span>
+        <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden',flexDirection:'row-reverse'}}>
+          <TeamBadge color={aN?.color||C.border} crest={aN?.crest} size={16}/>
+          <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{aN?.name||'TBD'}</span>
         </div>
       </div>
+      {hN&&aN&&<PitchView homeNation={hN} awayNation={aN}/>}
       {!disabled&&!simResult&&<>
         <div style={{display:'grid',gridTemplateColumns:'1fr 20px 1fr',gap:4,alignItems:'center',marginTop:10,marginBottom:8}}>
           <input type="number" min="0" value={hi} onChange={e=>setHi(e.target.value)} placeholder="0" style={inp}/>
