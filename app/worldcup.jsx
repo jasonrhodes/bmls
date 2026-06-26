@@ -64,34 +64,37 @@ const wcWPick=(items,wFn)=>{const ws=items.map(wFn),tot=ws.reduce((s,w)=>s+w,0);
 const wcScorW=p=>{const s=p._slot||p.position;return s==='FWD'?(p.score||5)*3:s==='MDF'?(p.mdfAtkScore||p.score||5)*1.5:0.1;};
 const wcAstW=(p,sid)=>{if(p.id===sid)return 0;const s=p._slot||p.position;return s==='MDF'?(p.mdfAtkScore||p.score||5)*2.5:s==='FWD'?(p.score||5)*1.5:0.3;};
 
-// Try all formations, pick the one that maximises lineup quality; always returns 6 (GK+5)
+// Try all formations, pick the one that maximises lineup quality; always returns GK+5
 function pickWCLineup(nation){
   if(!nation)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
   const ps=nation.players.filter(p=>p.name);
   if(!ps.length)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
   let gk=ps.find(p=>p.position==='GK');
   let out=ps.filter(p=>p.position!=='GK');
-  // No GK? Conscript lowest-scoring outfield player into goal
   if(!gk&&out.length){const s=[...out].sort((a,b)=>(a.score||5)-(b.score||5));gk=s[0];out=out.filter(p=>p.id!==gk.id);}
-  const sD=p=>p.position==='DEF'&&!p.wide?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.7:p.position==='MDF'?(p.mdfDefScore||5)*0.6:0;
-  const sM=p=>p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:p.position==='FWD'?(p.score||5)*0.55:p.position==='DEF'?(p.mdfDefScore||p.score||5)*0.5:0;
-  const sF=p=>p.position==='FWD'?(p.score||5):(p.position==='DEF'&&p.wide)?(p.score||5)*0.8:p.position==='MDF'?(p.mdfAtkScore||5)*0.65:0;
+  // Scoring per slot — last-resort fallback (0.2×) lets any player fill any slot
+  const sD=p=>p.position==='DEF'&&!p.wide?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.7:p.position==='MDF'?(p.mdfDefScore||5)*0.6:(p.score||5)*0.2;
+  const sM=p=>p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:p.position==='FWD'?(p.score||5)*0.55:p.position==='DEF'?(p.mdfDefScore||p.score||5)*0.5:(p.score||5)*0.3;
+  const sF=p=>p.position==='FWD'?(p.score||5):(p.position==='DEF'&&p.wide)?(p.score||5)*0.8:p.position==='MDF'?(p.mdfAtkScore||5)*0.65:(p.score||5)*0.2;
   const tryForm=f=>{
     const used=new Set(),picks=[];let tot=0;
-    const fill=(n,sFn,slot)=>{const sorted=[...out].sort((a,b)=>sFn(b)-sFn(a));for(let i=0;i<n;i++){const p=sorted.find(x=>!used.has(x.id));if(p){used.add(p.id);picks.push({...p,_slot:slot});tot+=Math.max(0,sFn(p));}}};
+    const fill=(n,sFn,slot)=>{const sorted=[...out].sort((a,b)=>sFn(b)-sFn(a));for(let i=0;i<n;i++){const p=sorted.find(x=>!used.has(x.id));if(p){used.add(p.id);picks.push({...p,_slot:slot});tot+=sFn(p);}}};
     fill(f.def,sD,'DEF');fill(f.mdf,sM,'MDF');fill(f.fwd,sF,'FWD');
     return{formation:f,picks:[...picks],used:new Set(used),total:tot+(f.bias||0)};
   };
-  // Pick best formation by score
   const best=WC_FORMATIONS.reduce((b,f)=>{const r=tryForm(f);return r.total>b.total?r:b;},tryForm(WC_FORMATIONS[0]));
   const{formation,picks,used}=best;
-  // Fill any remaining outfield slots to guarantee exactly 5 starters
+  // Fill any remaining gaps — assign to the formation slot still needing players
+  const filled={DEF:picks.filter(p=>p._slot==='DEF').length,MDF:picks.filter(p=>p._slot==='MDF').length,FWD:picks.filter(p=>p._slot==='FWD').length};
   const genS=p=>(p.score||5)+(p.mdfAtkScore||0)+(p.mdfDefScore||0);
   const rem=[...out].filter(p=>!used.has(p.id)).sort((a,b)=>genS(b)-genS(a));
-  while(picks.length<5&&rem.length){const p=rem.shift();picks.push({...p,_slot:p.position});used.add(p.id);}
+  while(picks.length<5&&rem.length){
+    const p=rem.shift();
+    const slot=filled.DEF<formation.def?'DEF':filled.MDF<formation.mdf?'MDF':'FWD';
+    filled[slot]++;picks.push({...p,_slot:slot});used.add(p.id);
+  }
   const starterIds=new Set([...(gk?[gk.id]:[]),...picks.map(p=>p.id)]);
-  const bench=ps.filter(p=>!starterIds.has(p.id));
-  return{formation,gk,starters:picks.slice(0,5),bench};
+  return{formation,gk,starters:picks.slice(0,5),bench:ps.filter(p=>!starterIds.has(p.id))};
 }
 
 function simWCMatch(home,away){
@@ -201,29 +204,38 @@ function PitchView({homeNation,awayNation}){
   if(!homeNation||!awayNation)return null;
   const hLU=pickWCLineup(homeNation);
   const aLU=pickWCLineup(awayNation);
-  const Dot=({p,color})=>(
-    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,minWidth:34}}>
-      <div style={{width:26,height:26,borderRadius:'50%',background:color||'#333',border:'2px solid rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:6,fontWeight:800,color:'#fff',textShadow:'0 1px 2px #0008',letterSpacing:0}}>
+  const isWide=p=>p.wide||(p.position==='DEF'&&p._slot==='FWD');
+  // Wide FWDs go on the outside, central FWDs in the middle
+  const arrangeFWDs=fwds=>{const w=fwds.filter(isWide),c=fwds.filter(p=>!isWide(p));if(!w.length)return c;if(!c.length)return w;return[w[0],...c,...w.slice(1)];};
+  const DotEl=({p,color,mt=0})=>(
+    <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,minWidth:32,marginTop:mt}}>
+      <div style={{width:26,height:26,borderRadius:'50%',background:color||'#333',border:'2px solid rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:6,fontWeight:800,color:'#fff',textShadow:'0 1px 2px #0008'}}>
         {p._slot||p.position}
       </div>
-      <span style={{fontSize:7.5,color:'rgba(255,255,255,0.65)',maxWidth:38,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'center',lineHeight:1.2}}>
+      <span style={{fontSize:7.5,color:'rgba(255,255,255,0.65)',maxWidth:40,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'center',lineHeight:1.2}}>
         {p.name.split(' ').pop()}
       </span>
     </div>
   );
+  // Normal row: centered, equal spacing
   const Row=({players,color})=>players.length?(
-    <div style={{display:'flex',justifyContent:'center',gap:2,padding:'2px 0'}}>{players.map(p=><Dot key={p.id} p={p} color={color}/>)}</div>
+    <div style={{display:'flex',justifyContent:'center',gap:4,padding:'2px 0',alignItems:'flex-start'}}>{players.map(p=><DotEl key={p.id} p={p} color={color}/>)}</div>
   ):null;
-  const isWideFwd=p=>p.wide||(p.position==='DEF'&&p._slot==='FWD');
-  // Away: GK at top descending to FWD toward center; wide FWDs just above center line (between pure FWD and center)
+  // FWD row: wide players spread to sides; center FWDs pushed toward center line (home=mt:0, away=mt:8), wide FWDs slightly behind (home=mt:8, away=mt:0)
+  const FwdRow=({players,color,home})=>{
+    if(!players.length)return null;
+    const arr=arrangeFWDs(players);
+    return(
+      <div style={{display:'flex',justifyContent:arr.length>1?'space-around':'center',padding:'2px 4px',alignItems:'flex-start'}}>
+        {arr.map(p=><DotEl key={p.id} p={p} color={color} mt={isWide(p)?(home?8:0):(home?0:8)}/>)}
+      </div>
+    );
+  };
   const aGk=aLU.gk?[{...aLU.gk,_slot:'GK'}]:[];
   const aDef=aLU.starters.filter(p=>p._slot==='DEF');
   const aMdf=aLU.starters.filter(p=>p._slot==='MDF');
-  const aFwdPure=aLU.starters.filter(p=>p._slot==='FWD'&&!isWideFwd(p));
-  const aFwdWide=aLU.starters.filter(p=>p._slot==='FWD'&&isWideFwd(p));
-  // Home: FWD toward center then GK at bottom; wide FWDs just below pure FWD (more withdrawn)
-  const hFwdPure=hLU.starters.filter(p=>p._slot==='FWD'&&!isWideFwd(p));
-  const hFwdWide=hLU.starters.filter(p=>p._slot==='FWD'&&isWideFwd(p));
+  const aFwd=aLU.starters.filter(p=>p._slot==='FWD');
+  const hFwd=hLU.starters.filter(p=>p._slot==='FWD');
   const hMdf=hLU.starters.filter(p=>p._slot==='MDF');
   const hDef=hLU.starters.filter(p=>p._slot==='DEF');
   const hGk=hLU.gk?[{...hLU.gk,_slot:'GK'}]:[];
@@ -236,11 +248,9 @@ function PitchView({homeNation,awayNation}){
       <Row players={aGk} color={awayNation.color}/>
       <Row players={aDef} color={awayNation.color}/>
       <Row players={aMdf} color={awayNation.color}/>
-      <Row players={aFwdPure} color={awayNation.color}/>
-      <Row players={aFwdWide} color={awayNation.color}/>
-      <div style={{height:1,background:'rgba(255,255,255,0.1)',margin:'5px 16px'}}/>
-      <Row players={hFwdWide} color={homeNation.color}/>
-      <Row players={hFwdPure} color={homeNation.color}/>
+      <FwdRow players={aFwd} color={awayNation.color} home={false}/>
+      <div style={{height:1,background:'rgba(255,255,255,0.1)',margin:'6px 16px'}}/>
+      <FwdRow players={hFwd} color={homeNation.color} home={true}/>
       <Row players={hMdf} color={homeNation.color}/>
       <Row players={hDef} color={homeNation.color}/>
       <Row players={hGk} color={homeNation.color}/>
