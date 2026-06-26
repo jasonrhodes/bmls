@@ -258,7 +258,13 @@ function PitchView({homeNation,awayNation}){
     const arr=arrangeFWDs(players);
     return(
       <div style={{display:'flex',justifyContent:'center',gap:22,padding:'2px 0',alignItems:'flex-start'}}>
-        {arr.map(p=><DotEl key={p.id} p={p} color={color} mt={isWide(p)?(home?12:0):(home?0:12)}/>)}
+        {arr.map((p,idx)=>{
+          // Outer players in any 3+ FWD row always get the "wide" visual —
+          // pulled slightly toward keeper — regardless of position type.
+          const outer=arr.length>=3&&(idx===0||idx===arr.length-1);
+          const wide=isWide(p)||outer;
+          return <DotEl key={p.id} p={p} color={color} mt={wide?(home?12:0):(home?0:12)}/>;
+        })}
       </div>
     );
   };
