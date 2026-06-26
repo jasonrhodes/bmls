@@ -64,7 +64,8 @@ const wcWPick=(items,wFn)=>{const ws=items.map(wFn),tot=ws.reduce((s,w)=>s+w,0);
 const wcScorW=p=>{const s=p._slot||p.position;return s==='FWD'?(p.score||5)*3:s==='MDF'?(p.mdfAtkScore||p.score||5)*1.5:0.1;};
 const wcAstW=(p,sid)=>{if(p.id===sid)return 0;const s=p._slot||p.position;return s==='MDF'?(p.mdfAtkScore||p.score||5)*2.5:s==='FWD'?(p.score||5)*1.5:0.3;};
 
-// Try all formations, pick the one that maximises lineup quality; always returns GK+5
+// Optimal lineup selection: exhaustive assignment search across all formations.
+// For n≤7 outfield players and 5 slots, P(n,5)≤2520 per formation — fast enough.
 function pickWCLineup(nation){
   if(!nation)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
   const ps=nation.players.filter(p=>p.name);
@@ -72,29 +73,48 @@ function pickWCLineup(nation){
   let gk=ps.find(p=>p.position==='GK');
   let out=ps.filter(p=>p.position!=='GK');
   if(!gk&&out.length){const s=[...out].sort((a,b)=>(a.score||5)-(b.score||5));gk=s[0];out=out.filter(p=>p.id!==gk.id);}
-  // Scoring per slot — last-resort fallback (0.2×) lets any player fill any slot
-  const sD=p=>p.position==='DEF'&&!p.wide?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.7:p.position==='MDF'?(p.mdfDefScore||5)*0.6:(p.score||5)*0.2;
-  const sM=p=>p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:p.position==='FWD'?(p.score||5)*0.55:p.position==='DEF'?(p.mdfDefScore||p.score||5)*0.5:(p.score||5)*0.3;
-  const sF=p=>p.position==='FWD'?(p.score||5):(p.position==='DEF'&&p.wide)?(p.score||5)*0.8:p.position==='MDF'?(p.mdfAtkScore||5)*0.65:(p.score||5)*0.2;
-  const tryForm=f=>{
-    const used=new Set(),picks=[];let tot=0;
-    const fill=(n,sFn,slot)=>{const sorted=[...out].sort((a,b)=>sFn(b)-sFn(a));for(let i=0;i<n;i++){const p=sorted.find(x=>!used.has(x.id));if(p){used.add(p.id);picks.push({...p,_slot:slot});tot+=sFn(p);}}};
-    fill(f.def,sD,'DEF');fill(f.mdf,sM,'MDF');fill(f.fwd,sF,'FWD');
-    return{formation:f,picks:[...picks],used:new Set(used),total:tot+(f.bias||0)};
+
+  // How good is player p in a given slot type?
+  const slotScore=(p,slot)=>{
+    if(slot==='DEF')return p.position==='DEF'&&!p.wide?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.7:p.position==='MDF'?(p.mdfDefScore||5)*0.6:(p.score||5)*0.2;
+    if(slot==='MDF')return p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:p.position==='FWD'?(p.score||5)*0.55:p.position==='DEF'?(p.mdfDefScore||p.score||5)*0.5:(p.score||5)*0.3;
+    return p.position==='FWD'?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.8:p.position==='MDF'?(p.mdfAtkScore||5)*0.65:(p.score||5)*0.2;
   };
-  const best=WC_FORMATIONS.reduce((b,f)=>{const r=tryForm(f);return r.total>b.total?r:b;},tryForm(WC_FORMATIONS[0]));
-  const{formation,picks,used}=best;
-  // Fill any remaining gaps — assign to the formation slot still needing players
-  const filled={DEF:picks.filter(p=>p._slot==='DEF').length,MDF:picks.filter(p=>p._slot==='MDF').length,FWD:picks.filter(p=>p._slot==='FWD').length};
-  const genS=p=>(p.score||5)+(p.mdfAtkScore||0)+(p.mdfDefScore||0);
-  const rem=[...out].filter(p=>!used.has(p.id)).sort((a,b)=>genS(b)-genS(a));
-  while(picks.length<5&&rem.length){
-    const p=rem.shift();
-    const slot=filled.DEF<formation.def?'DEF':filled.MDF<formation.mdf?'MDF':'FWD';
-    filled[slot]++;picks.push({...p,_slot:slot});used.add(p.id);
+
+  const makeSlots=f=>{const s=[];for(let i=0;i<f.def;i++)s.push('DEF');for(let i=0;i<f.mdf;i++)s.push('MDF');for(let i=0;i<f.fwd;i++)s.push('FWD');return s;};
+
+  // Find the player-to-slot assignment that maximises total slot score
+  const bestAssign=(players,slots)=>{
+    const n=Math.min(players.length,slots.length);
+    if(!n)return{score:0,picks:[]};
+    const used=new Array(players.length).fill(false);
+    let bestScore=-Infinity,bestPicks=null;
+    const cur=[];
+    const go=(si,score)=>{
+      if(si===n){if(score>bestScore){bestScore=score;bestPicks=[...cur];}return;}
+      for(let pi=0;pi<players.length;pi++){
+        if(!used[pi]){
+          used[pi]=true;cur.push(pi);
+          go(si+1,score+slotScore(players[pi],slots[si]));
+          used[pi]=false;cur.pop();
+        }
+      }
+    };
+    go(0,0);
+    return{score:bestScore,picks:bestPicks||[]};
+  };
+
+  let best=null;
+  for(const f of WC_FORMATIONS){
+    const slots=makeSlots(f);
+    const{score,picks}=bestAssign(out,slots);
+    const total=score+(f.bias||0);
+    if(!best||total>best.total)best={total,formation:f,starters:picks.map((pi,si)=>({...out[pi],_slot:slots[si]}))};
   }
-  const starterIds=new Set([...(gk?[gk.id]:[]),...picks.map(p=>p.id)]);
-  return{formation,gk,starters:picks.slice(0,5),bench:ps.filter(p=>!starterIds.has(p.id))};
+
+  const{formation,starters}=best;
+  const starterIds=new Set([...(gk?[gk.id]:[]),...starters.map(p=>p.id)]);
+  return{formation,gk,starters,bench:ps.filter(p=>!starterIds.has(p.id))};
 }
 
 function simWCMatch(home,away){
