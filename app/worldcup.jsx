@@ -460,18 +460,11 @@ function GroupsTab({nations,wcMeta,setWcMeta,groupMatches,setGroupMatches}){
     const r=simWCMatch(hNation,aNation);
     onResult(mid,group.nationIds[ai2],group.nationIds[bi2],r.hGoals,r.aGoals);
   };
-  const resetGroups=async()=>{
-    if(!confirm('Reset group draw? Match results will also be cleared.'))return;
-    const toDelete=[...(wcMeta?.groups||[]).flatMap(g=>GROUP_PAIRS.map((_,i)=>`wc_gm_${g.id}${i+1}`)),'wc_meta'];
-    await Promise.all(toDelete.map(deleteFixture));
-    setWcMeta(null);setGroupMatches([]);
-  };
   if(!wcMeta?.groups){return<div style={{paddingBottom:40}}><GroupDrawView nations={nations} wcMeta={wcMeta} onSaveGroups={saveGroups} onToast={showToast}/>{toast&&<div style={{position:'fixed',bottom:80,left:'50%',transform:'translateX(-50%)',background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 18px',fontSize:13,color:C.text,zIndex:50,whiteSpace:'nowrap'}}>{toast}</div>}</div>;}
   return(
     <div style={{paddingBottom:40}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
+      <div style={{marginBottom:16}}>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:C.gold,letterSpacing:3}}>Group Stage</div>
-        <button onClick={resetGroups} style={{background:'none',border:'none',color:C.muted,fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>Reset Draw</button>
       </div>
       {wcMeta.groups.map(g=><GroupCard key={g.id} group={g} nations={nations} groupMatches={groupMatches} onResult={onResult} onSim={onSim}/>)}
       {toast&&<div style={{position:'fixed',bottom:80,left:'50%',transform:'translateX(-50%)',background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 18px',fontSize:13,color:C.text,zIndex:50,whiteSpace:'nowrap'}}>{toast}</div>}
