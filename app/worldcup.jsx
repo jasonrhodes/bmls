@@ -923,6 +923,86 @@ function NationsTab({nations}){
   );
 }
 
+// ── TeamsTab ─────────────────────────────────────────────────────────────────
+function TeamsTab({nations}){
+  const named=nations.filter(n=>n.name&&n.players.some(p=>p.name));
+  if(!named.length)return <Empty icon="🌍" msg="No nations set up yet." hint="Go to Manage → Nations to add squads."/>;
+  const sorted=[...named].map(n=>({n,r:lineupRatings(n)})).sort((a,b)=>(b.r.atk+b.r.def)-(a.r.atk+a.r.def));
+  return(<div style={{paddingBottom:40}}>{sorted.map(({n})=><NationBreakdown key={n.id} nation={n}/>)}</div>);
+}
+function NationBreakdown({nation}){
+  const[open,setOpen]=useState(true);
+  const lu=pickWCLineup(nation);
+  const ratings=lineupRatings(nation);
+  const bySlot={GK:lu.gk?[{...lu.gk,_slot:'GK'}]:[],DEF:lu.starters.filter(p=>p._slot==='DEF'),MDF:lu.starters.filter(p=>p._slot==='MDF'),FWD:lu.starters.filter(p=>p._slot==='FWD')};
+  const slotMeta={GK:{label:'Goalkeeper',color:C.gold},DEF:{label:'Defence',color:C.green},MDF:{label:'Midfield',color:C.accent},FWD:{label:'Attack',color:C.red}};
+  const primaryScore=p=>p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:(p.score||5);
+  const outOfPos=p=>p._slot&&p._slot!=='GK'&&p.position!==p._slot;
+  const lastName=p=>(p.name||'').trim().split(/\s+/).filter(Boolean).pop()||(p.name||'').trim()||'—';
+  return(
+    <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:12,marginBottom:10,overflow:'hidden'}}>
+      <div onClick={()=>setOpen(o=>!o)} style={{display:'flex',alignItems:'center',gap:10,padding:'12px 14px',cursor:'pointer'}}>
+        <TeamBadge color={nation.color} crest={nation.crest} size={36}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:15,fontWeight:700,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nation.name}</div>
+          <div style={{display:'flex',gap:8,marginTop:3}}>
+            <span style={{fontSize:10,color:C.muted,letterSpacing:1,textTransform:'uppercase'}}>{lu.formation.name}</span>
+            <span style={{fontSize:10,color:C.red,fontWeight:700}}>ATK {ratings.atk}</span>
+            <span style={{fontSize:10,color:C.green,fontWeight:700}}>DEF {ratings.def}</span>
+          </div>
+        </div>
+        <span style={{fontSize:11,color:C.muted}}>{open?'▲':'▼'}</span>
+      </div>
+      {open&&(
+        <div style={{borderTop:`1px solid ${C.border}`,padding:'10px 12px 14px'}}>
+          {['GK','DEF','MDF','FWD'].map(slot=>{
+            const players=bySlot[slot];
+            if(!players.length)return null;
+            const{label,color}=slotMeta[slot];
+            return(
+              <div key={slot} style={{marginBottom:10}}>
+                <div style={{fontSize:8,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color,opacity:0.65,marginBottom:5}}>{label}</div>
+                {players.map(p=>{
+                  const oop=outOfPos(p);
+                  return(
+                    <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 10px',background:C.card,border:`1px solid ${oop?'rgba(244,162,97,0.35)':C.border}`,borderRadius:7,marginBottom:4}}>
+                      <div style={{background:posColor(p._slot||p.position)+'22',color:posColor(p._slot||p.position),borderRadius:4,padding:'2px 5px',fontSize:9,fontWeight:700,flexShrink:0,minWidth:30,textAlign:'center'}}>{p._slot||p.position}</div>
+                      <div style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}><span style={{fontSize:13,fontWeight:600,color:C.text}}>{p.name}</span></div>
+                      {oop&&<div style={{background:'rgba(244,162,97,0.1)',border:'1px solid rgba(244,162,97,0.4)',color:'#f4a261',borderRadius:4,padding:'1px 6px',fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}→{p._slot}</div>}
+                      {p.position==='MDF'?(
+                        <div style={{display:'flex',gap:4,flexShrink:0}}>
+                          <span style={{fontSize:9,color:C.red,fontWeight:700}}>A{p.mdfAtkScore||5}</span>
+                          <span style={{fontSize:9,color:C.green,fontWeight:700}}>D{p.mdfDefScore||5}</span>
+                        </div>
+                      ):(
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold,flexShrink:0,lineHeight:1}}>{primaryScore(p)}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {lu.bench.length>0&&(
+            <div style={{borderTop:`1px solid rgba(255,255,255,0.06)`,paddingTop:8,marginTop:2}}>
+              <div style={{fontSize:8,fontWeight:700,letterSpacing:2,textTransform:'uppercase',color:C.muted,opacity:0.5,marginBottom:5}}>Bench</div>
+              <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                {lu.bench.map(p=>(
+                  <div key={p.id} style={{display:'flex',alignItems:'center',gap:4,background:nation.color+'18',border:`1px solid ${nation.color}33`,borderRadius:5,padding:'3px 7px'}}>
+                    <span style={{fontSize:9,color:nation.color,fontWeight:700}}>{(p.position||'')[0]}</span>
+                    <span style={{fontSize:11,color:C.muted}}>{lastName(p)}</span>
+                    {p.position==='MDF'?<span style={{fontSize:9,color:C.muted,opacity:0.7}}>A{p.mdfAtkScore||5}/D{p.mdfDefScore||5}</span>:p.position!=='GK'?<span style={{fontSize:9,color:C.muted,opacity:0.7}}>{p.score||5}</span>:null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── WCSetupView ──────────────────────────────────────────────────────────────
 function WCSetupView({nations,wcMeta,groupMatches,setWcMeta,setGroupMatches,onToast}){
   const[confirm,setConfirm]=useState(false);
@@ -1296,7 +1376,7 @@ function CareerTab({nations,wcMeta,groupMatches}){
 }
 
 // ── WCApp ────────────────────────────────────────────────────────────────────
-const WC_TABS=[{id:'groups',label:'Groups'},{id:'knockout',label:'Knockout'},{id:'nations',label:'Nations'},{id:'career',label:'Career'},{id:'manage',label:'Manage'}];
+const WC_TABS=[{id:'groups',label:'Groups'},{id:'knockout',label:'Knockout'},{id:'teams',label:'Teams'},{id:'nations',label:'Nations'},{id:'career',label:'Career'},{id:'manage',label:'Manage'}];
 
 function WCApp(){
   const[tab,setTab]=useState('groups');
@@ -1338,6 +1418,7 @@ function WCApp(){
         {/* Content */}
         {tab==='groups'&&<GroupsTab nations={nations} wcMeta={wcMeta} setWcMeta={setWcMeta} groupMatches={groupMatches} setGroupMatches={setGroupMatches}/>}
         {tab==='knockout'&&<KnockoutTab nations={nations} wcMeta={wcMeta} groupMatches={groupMatches} wcBracket={wcBracket} setWcBracket={setWcBracket}/>}
+        {tab==='teams'&&<TeamsTab nations={nations}/>}
         {tab==='nations'&&<NationsTab nations={nations}/>}
         {tab==='career'&&<CareerTab nations={nations} wcMeta={wcMeta} groupMatches={groupMatches}/>}
         {tab==='manage'&&<ManageTab nations={nations} setNations={setNations} teams={teams} wcMeta={wcMeta} setWcMeta={setWcMeta} groupMatches={groupMatches} setGroupMatches={setGroupMatches} onToast={showToast}/>}
