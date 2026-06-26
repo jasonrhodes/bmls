@@ -98,6 +98,14 @@ async function resizeCrest(file){
 }
 
 function depthMultiplier(n){if(n<=1)return 0.9;if(n>=4)return 1.05;return 1.0;}
+function isAutoSuspended(playerId,fixtures){
+  const played=(fixtures||[]).filter(f=>f.played&&(f.playerStats||[]).some(ps=>ps.playerId===playerId));
+  if(!played.length)return false;
+  const lastStats=(played[played.length-1].playerStats||[]).find(ps=>ps.playerId===playerId);
+  if(lastStats?.redCard)return true;
+  const yellows=played.slice(-5).reduce((s,f)=>s+((f.playerStats||[]).find(ps=>ps.playerId===playerId)?.yellowCards||0),0);
+  return yellows>=3;
+}
 
 function lineupRatings(team){
   if(!team)return{atk:0,def:0};
@@ -909,20 +917,16 @@ function RatingsTab({teams}){
   );
 }
 
-function SquadsTab({teams,setTeams}){
+function SquadsTab({teams,fixtures}){
   const named=teams.filter(t=>t.name&&t.players.length>0);
   const[selId,setSelId]=useState(null);
   const[showCrests,setShowCrests]=useState(false);
   const team=teams.find(t=>t.id===selId);
-  const toggle=(pid,field)=>{
-    const nt=teams.map(t=>t.id!==selId?t:{...t,players:t.players.map(p=>p.id!==pid?p:{...p,[field]:!p[field],...(field==="suspended"&&!p.suspended?{injured:false}:{}),...(field==="injured"&&!p.injured?{suspended:false}:{})})});
-    setTeams(nt);syncTeams(nt);
-  };
-  const setFormation=fid=>{const nt=teams.map(t=>t.id!==selId?t:{...t,formation:fid});setTeams(nt);syncTeams(nt);};
   if(named.length===0)return<Empty icon="📋" msg="No teams with players yet." hint="Go to Manage → Teams first."/>;
   const ratings=team?lineupRatings(team):null;
-  const activeOut=team?team.players.filter(p=>p.position!=="GK"&&!p.injured&&!p.suspended):[];
-  const gk=team?team.players.find(p=>p.position==="GK"&&!p.injured&&!p.suspended):null;
+  const avail=p=>!p.injured&&!isAutoSuspended(p.id,fixtures);
+  const activeOut=team?team.players.filter(p=>p.position!=="GK"&&avail(p)):[];
+  const gk=team?team.players.find(p=>p.position==="GK"&&avail(p)):null;
   const startingCount=(gk?1:0)+Math.min(activeOut.length,5);
   return(
     <div>
@@ -962,7 +966,8 @@ function SquadsTab({teams,setTeams}){
                 <span style={{width:6,height:6,borderRadius:"50%",background:posColor(pos),display:"inline-block"}}/>{posLabel}
               </div>
               {posPlayers.map(p=>{
-                const active=!p.injured&&!p.suspended,isGK=p.position==="GK";
+                const susp=isAutoSuspended(p.id,fixtures);
+                const active=avail(p),isGK=p.position==="GK";
                 const widePrefix=p.wide&&(p.position==="DEF"||p.position==="FWD")?"Wide ":"";
                 const altLabel=p.position==="MDF"&&p.altPosition?` · Also ${p.altPosition}`:"";
                 const scoreLabel=isGK?"Not rated":p.position==="FWD"?`${widePrefix}ATK ${p.score}`:p.position==="DEF"?`${widePrefix}DEF ${p.score}`:`ATK ${p.mdfAtkScore} · DEF ${p.mdfDefScore}${altLabel}`;
@@ -973,12 +978,10 @@ function SquadsTab({teams,setTeams}){
                       <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
                         <div style={{fontSize:14,fontWeight:600,color:active?C.text:C.muted}}>{p.name||"Unnamed"}</div>
                         {(p.roles||[]).map(r=>{const role=ROLES.find(x=>x.id===r);return role?<span key={r} style={{fontSize:9,fontWeight:700,color:role.color,background:role.color+"22",border:`1px solid ${role.color}44`,borderRadius:3,padding:"1px 5px"}}>{role.short}</span>:null;})}
+                        {susp&&<span style={{fontSize:9,fontWeight:700,color:C.gold,background:`${C.gold}22`,border:`1px solid ${C.gold}44`,borderRadius:3,padding:"1px 5px"}}>SUSP</span>}
+                        {p.injured&&<span style={{fontSize:9,fontWeight:700,color:C.red,background:`${C.red}22`,border:`1px solid ${C.red}44`,borderRadius:3,padding:"1px 5px"}}>INJ</span>}
                       </div>
                       <div style={{fontSize:11,color:C.muted,marginTop:2}}>{scoreLabel}</div>
-                    </div>
-                    <div style={{display:"flex",gap:6}}>
-                      <button onClick={()=>toggle(p.id,"injured")} style={{background:p.injured?`${C.red}33`:"transparent",color:p.injured?C.red:C.muted,border:`1px solid ${p.injured?C.red:C.border}`,borderRadius:5,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Injured</button>
-                      <button onClick={()=>toggle(p.id,"suspended")} style={{background:p.suspended?`${C.gold}33`:"transparent",color:p.suspended?C.gold:C.muted,border:`1px solid ${p.suspended?C.gold:C.border}`,borderRadius:5,padding:"4px 9px",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Susp.</button>
                     </div>
                   </div>
                 );
@@ -986,14 +989,6 @@ function SquadsTab({teams,setTeams}){
             </div>
           );
         })}
-        {team.players.some(p=>p.suspended||p.injured)&&(
-          <div style={{marginTop:8,background:C.surface,borderRadius:8,padding:"10px 14px"}}>
-            <div style={{fontSize:10,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Unavailable</div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-              {team.players.filter(p=>p.suspended||p.injured).map(p=><span key={p.id} style={{background:p.injured?`${C.red}22`:`${C.gold}22`,color:p.injured?C.red:C.gold,border:`1px solid ${p.injured?C.red:C.gold}44`,borderRadius:5,padding:"3px 9px",fontSize:11,fontWeight:600}}>{p.name||"Unnamed"} · {p.injured?"Injured":"Suspended"}</span>)}
-            </div>
-          </div>
-        )}
       </div>}
     </div>
   );
@@ -3681,7 +3676,7 @@ function App(){
         {tab==="table"   &&<TableTab teams={teams} fixtures={fixtures}/>}
         {tab==="stats"   &&<StatsTab teams={teams} fixtures={fixtures}/>}
         {tab==="ratings" &&<RatingsTab teams={teams}/>}
-        {tab==="squads"    &&<SquadsTab teams={teams} setTeams={setTeams}/>}
+        {tab==="squads"    &&<SquadsTab teams={teams} fixtures={fixtures}/>}
         {tab==="transfers" &&<TransfersTab transfers={transfers} teams={teams}/>}
         {tab==="news"      &&<NewsTab teams={teams} fixtures={fixtures} transfers={transfers} activeMatchWeek={activeMatchWeek}/>}
         {tab==="odds"      &&<OddsTab teams={teams} fixtures={fixtures} activeMatchWeek={activeMatchWeek}/>}
