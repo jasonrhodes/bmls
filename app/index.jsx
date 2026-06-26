@@ -1177,18 +1177,18 @@ function NationsManageView({nations,setNations,teams,intlFixtures,setIntlFixture
   const flagRef=useRef();
   const allBmlsPlayers=teams.flatMap(t=>t.players.map(p=>({...p,club:t.name,clubColor:t.color})));
   const filtered=allBmlsPlayers.filter(p=>p.name&&p.name.toLowerCase().includes(search.toLowerCase()));
-  const saveNation=n=>{const nn=nations.map(x=>x.id===n.id?n:x);setNations(nn);syncNations(nn);setEditNation(null);setAddMode(null);setNewPlayer(null);setSearch('');};
+  const saveNation=n=>{const nn=nations.map(x=>x.id===n.id?n:x);setNations(nn);syncNations(nn);};
   const addFromBmls=p=>{
     if(editNation.players.some(x=>x.id===p.id))return;
     const np={...p,club:p.club||''};
     const updated={...editNation,players:[...editNation.players,np]};
-    setEditNation(updated);saveNation(updated);setAddMode(null);setSearch('');
+    setEditNation(updated);saveNation(updated);setAddMode(null);setSearch('');setNewPlayer(null);
   };
   const addNewPlayer=()=>{
     if(!newPlayer||!newPlayer.name)return;
     const np={...makeNationPlayer(),...newPlayer,id:Date.now()+Math.random()};
     const updated={...editNation,players:[...editNation.players,np]};
-    setEditNation(updated);saveNation(updated);setAddMode(null);setNewPlayer(null);
+    setEditNation(updated);saveNation(updated);setAddMode(null);setNewPlayer(null);setSearch('');
   };
   const removePlayer=pid=>{const updated={...editNation,players:editNation.players.filter(p=>p.id!==pid)};setEditNation(updated);saveNation(updated);};
   const addIntlFixture=()=>{
