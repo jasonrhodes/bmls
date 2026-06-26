@@ -64,22 +64,34 @@ const wcWPick=(items,wFn)=>{const ws=items.map(wFn),tot=ws.reduce((s,w)=>s+w,0);
 const wcScorW=p=>{const s=p._slot||p.position;return s==='FWD'?(p.score||5)*3:s==='MDF'?(p.mdfAtkScore||p.score||5)*1.5:0.1;};
 const wcAstW=(p,sid)=>{if(p.id===sid)return 0;const s=p._slot||p.position;return s==='MDF'?(p.mdfAtkScore||p.score||5)*2.5:s==='FWD'?(p.score||5)*1.5:0.3;};
 
-// Try all formations, pick the one that maximises lineup quality
+// Try all formations, pick the one that maximises lineup quality; always returns 6 (GK+5)
 function pickWCLineup(nation){
-  if(!nation)return{formation:WC_FORMATIONS[0],gk:null,starters:[]};
+  if(!nation)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
   const ps=nation.players.filter(p=>p.name);
-  const gk=ps.find(p=>p.position==='GK');
-  const out=ps.filter(p=>p.position!=='GK');
+  if(!ps.length)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
+  let gk=ps.find(p=>p.position==='GK');
+  let out=ps.filter(p=>p.position!=='GK');
+  // No GK? Conscript lowest-scoring outfield player into goal
+  if(!gk&&out.length){const s=[...out].sort((a,b)=>(a.score||5)-(b.score||5));gk=s[0];out=out.filter(p=>p.id!==gk.id);}
   const sD=p=>p.position==='DEF'&&!p.wide?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.7:p.position==='MDF'?(p.mdfDefScore||5)*0.6:0;
   const sM=p=>p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:p.position==='FWD'?(p.score||5)*0.55:p.position==='DEF'?(p.mdfDefScore||p.score||5)*0.5:0;
   const sF=p=>p.position==='FWD'?(p.score||5):(p.position==='DEF'&&p.wide)?(p.score||5)*0.8:p.position==='MDF'?(p.mdfAtkScore||5)*0.65:0;
   const tryForm=f=>{
     const used=new Set(),picks=[];let tot=0;
-    const fill=(n,sFn,slot)=>{const sorted=[...out].sort((a,b)=>sFn(b)-sFn(a));for(let i=0;i<n;i++){const p=sorted.find(x=>!used.has(x.id));if(p){used.add(p.id);picks.push({...p,_slot:slot});tot+=sFn(p);}}};
+    const fill=(n,sFn,slot)=>{const sorted=[...out].sort((a,b)=>sFn(b)-sFn(a));for(let i=0;i<n;i++){const p=sorted.find(x=>!used.has(x.id));if(p){used.add(p.id);picks.push({...p,_slot:slot});tot+=Math.max(0,sFn(p));}}};
     fill(f.def,sD,'DEF');fill(f.mdf,sM,'MDF');fill(f.fwd,sF,'FWD');
-    return{formation:f,gk,starters:picks,total:tot+(f.bias||0)};
+    return{formation:f,picks:[...picks],used:new Set(used),total:tot+(f.bias||0)};
   };
-  return WC_FORMATIONS.reduce((best,f)=>{const r=tryForm(f);return r.total>best.total?r:best;},tryForm(WC_FORMATIONS[0]));
+  // Pick best formation by score
+  const best=WC_FORMATIONS.reduce((b,f)=>{const r=tryForm(f);return r.total>b.total?r:b;},tryForm(WC_FORMATIONS[0]));
+  const{formation,picks,used}=best;
+  // Fill any remaining outfield slots to guarantee exactly 5 starters
+  const genS=p=>(p.score||5)+(p.mdfAtkScore||0)+(p.mdfDefScore||0);
+  const rem=[...out].filter(p=>!used.has(p.id)).sort((a,b)=>genS(b)-genS(a));
+  while(picks.length<5&&rem.length){const p=rem.shift();picks.push({...p,_slot:p.position});used.add(p.id);}
+  const starterIds=new Set([...(gk?[gk.id]:[]),...picks.map(p=>p.id)]);
+  const bench=ps.filter(p=>!starterIds.has(p.id));
+  return{formation,gk,starters:picks.slice(0,5),bench};
 }
 
 function simWCMatch(home,away){
@@ -202,13 +214,16 @@ function PitchView({homeNation,awayNation}){
   const Row=({players,color})=>players.length?(
     <div style={{display:'flex',justifyContent:'center',gap:2,padding:'2px 0'}}>{players.map(p=><Dot key={p.id} p={p} color={color}/>)}</div>
   ):null;
-  // Away: GK at top descending to FWD toward center
+  const isWideFwd=p=>p.wide||(p.position==='DEF'&&p._slot==='FWD');
+  // Away: GK at top descending to FWD toward center; wide FWDs just above center line (between pure FWD and center)
   const aGk=aLU.gk?[{...aLU.gk,_slot:'GK'}]:[];
   const aDef=aLU.starters.filter(p=>p._slot==='DEF');
   const aMdf=aLU.starters.filter(p=>p._slot==='MDF');
-  const aFwd=aLU.starters.filter(p=>p._slot==='FWD');
-  // Home: FWD toward center, GK at bottom
-  const hFwd=hLU.starters.filter(p=>p._slot==='FWD');
+  const aFwdPure=aLU.starters.filter(p=>p._slot==='FWD'&&!isWideFwd(p));
+  const aFwdWide=aLU.starters.filter(p=>p._slot==='FWD'&&isWideFwd(p));
+  // Home: FWD toward center then GK at bottom; wide FWDs just below pure FWD (more withdrawn)
+  const hFwdPure=hLU.starters.filter(p=>p._slot==='FWD'&&!isWideFwd(p));
+  const hFwdWide=hLU.starters.filter(p=>p._slot==='FWD'&&isWideFwd(p));
   const hMdf=hLU.starters.filter(p=>p._slot==='MDF');
   const hDef=hLU.starters.filter(p=>p._slot==='DEF');
   const hGk=hLU.gk?[{...hLU.gk,_slot:'GK'}]:[];
@@ -221,9 +236,11 @@ function PitchView({homeNation,awayNation}){
       <Row players={aGk} color={awayNation.color}/>
       <Row players={aDef} color={awayNation.color}/>
       <Row players={aMdf} color={awayNation.color}/>
-      <Row players={aFwd} color={awayNation.color}/>
+      <Row players={aFwdPure} color={awayNation.color}/>
+      <Row players={aFwdWide} color={awayNation.color}/>
       <div style={{height:1,background:'rgba(255,255,255,0.1)',margin:'5px 16px'}}/>
-      <Row players={hFwd} color={homeNation.color}/>
+      <Row players={hFwdWide} color={homeNation.color}/>
+      <Row players={hFwdPure} color={homeNation.color}/>
       <Row players={hMdf} color={homeNation.color}/>
       <Row players={hDef} color={homeNation.color}/>
       <Row players={hGk} color={homeNation.color}/>
@@ -485,7 +502,9 @@ function GroupCard({group,nations,groupMatches,onResult}){
   const ms=getGroupMatches(group.id,groupMatches);
   const standings=computeStandings(group.nationIds,ms,nations);
   const[hi,setHi]=useState({});const[ai,setAi]=useState({});
-  const[simResult,setSimResult]=useState({}); // {mid: {hGoals,aGoals,events}}
+  const[simResult,setSimResult]=useState({});
+  const[expanded,setExpanded]=useState({});
+  const toggle=mid=>setExpanded(x=>({...x,[mid]:!x[mid]}));
   const inp={background:C.surface,border:`1px solid ${C.border}`,borderRadius:5,padding:'5px 0',color:C.text,fontSize:15,fontFamily:"'Bebas Neue',sans-serif",outline:'none',width:'100%',textAlign:'center'};
   return(
     <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14,marginBottom:16}}>
@@ -533,35 +552,39 @@ function GroupCard({group,nations,groupMatches,onResult}){
           const hv=hi[mid]??'',av=ai[mid]??'';
           const canSave=hv!==''&&av!==''&&!isNaN(parseInt(hv))&&!isNaN(parseInt(av));
           const sr=simResult[mid];
+          const isOpen=expanded[mid]||!!sr;
           return(
-            <div key={idx} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',marginBottom:8}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden'}}>
-                  <TeamBadge color={hNation?.color||C.border} crest={hNation?.crest} size={16}/>
+            <div key={idx} style={{background:C.surface,border:`1px solid ${isOpen?C.border+'88':C.border+'44'}`,borderRadius:8,marginBottom:6,overflow:'hidden'}}>
+              <div onClick={()=>toggle(mid)} style={{display:'flex',alignItems:'center',padding:'9px 12px',cursor:'pointer',gap:6,userSelect:'none'}}>
+                <div style={{display:'flex',alignItems:'center',gap:5,flex:1,minWidth:0}}>
+                  <TeamBadge color={hNation?.color||C.border} crest={hNation?.crest} size={14}/>
                   <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{hNation?.name||'?'}</span>
                 </div>
-                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:C.muted,letterSpacing:2,flexShrink:0,margin:'0 8px'}}>vs</span>
-                <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden',flexDirection:'row-reverse'}}>
-                  <TeamBadge color={aNation?.color||C.border} crest={aNation?.crest} size={16}/>
-                  <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{aNation?.name||'?'}</span>
+                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:11,color:C.muted,letterSpacing:2,flexShrink:0}}>vs</span>
+                <div style={{display:'flex',alignItems:'center',gap:5,flex:1,minWidth:0,flexDirection:'row-reverse'}}>
+                  <TeamBadge color={aNation?.color||C.border} crest={aNation?.crest} size={14}/>
+                  <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}}>{aNation?.name||'?'}</span>
                 </div>
+                <span style={{color:C.muted,fontSize:10,flexShrink:0,marginLeft:4}}>{isOpen?'▲':'▼'}</span>
               </div>
-              {hNation&&aNation&&<PitchView homeNation={hNation} awayNation={aNation}/>}
-              {!sr&&<>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 20px 1fr',gap:4,alignItems:'center',marginTop:10,marginBottom:8}}>
-                  <input type="number" min="0" value={hv} onChange={e=>setHi(x=>({...x,[mid]:e.target.value}))} placeholder="0" style={inp}/>
-                  <div style={{textAlign:'center',color:C.muted,fontFamily:"'Bebas Neue',sans-serif"}}>–</div>
-                  <input type="number" min="0" value={av} onChange={e=>setAi(x=>({...x,[mid]:e.target.value}))} placeholder="0" style={inp}/>
-                </div>
-                <div style={{display:'flex',gap:6}}>
-                  <Btn onClick={()=>{if(canSave)onResult(mid,group.nationIds[ai2],group.nationIds[bi2],parseInt(hv),parseInt(av));}} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
-                  <Btn onClick={()=>{if(hNation&&aNation)setSimResult(x=>({...x,[mid]:simWCMatchWithEvents(hNation,aNation)}));}} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
-                </div>
-              </>}
-              {sr&&<SimResultPanel result={sr} hNation={hNation} aNation={aNation}
-                onSave={()=>{onResult(mid,group.nationIds[ai2],group.nationIds[bi2],sr.hGoals,sr.aGoals);setSimResult(x=>({...x,[mid]:null}));}}
-                onResim={()=>{if(hNation&&aNation)setSimResult(x=>({...x,[mid]:simWCMatchWithEvents(hNation,aNation)}));}}
-              />}
+              {isOpen&&<div style={{padding:'0 12px 12px'}}>
+                {hNation&&aNation&&<PitchView homeNation={hNation} awayNation={aNation}/>}
+                {!sr&&<>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 20px 1fr',gap:4,alignItems:'center',marginTop:10,marginBottom:8}}>
+                    <input type="number" min="0" value={hv} onChange={e=>setHi(x=>({...x,[mid]:e.target.value}))} placeholder="0" style={inp}/>
+                    <div style={{textAlign:'center',color:C.muted,fontFamily:"'Bebas Neue',sans-serif"}}>–</div>
+                    <input type="number" min="0" value={av} onChange={e=>setAi(x=>({...x,[mid]:e.target.value}))} placeholder="0" style={inp}/>
+                  </div>
+                  <div style={{display:'flex',gap:6}}>
+                    <Btn onClick={()=>{if(canSave)onResult(mid,group.nationIds[ai2],group.nationIds[bi2],parseInt(hv),parseInt(av));}} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
+                    <Btn onClick={()=>{if(hNation&&aNation)setSimResult(x=>({...x,[mid]:simWCMatchWithEvents(hNation,aNation)}));}} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
+                  </div>
+                </>}
+                {sr&&<SimResultPanel result={sr} hNation={hNation} aNation={aNation}
+                  onSave={()=>{onResult(mid,group.nationIds[ai2],group.nationIds[bi2],sr.hGoals,sr.aGoals);setSimResult(x=>({...x,[mid]:null}));}}
+                  onResim={()=>{if(hNation&&aNation)setSimResult(x=>({...x,[mid]:simWCMatchWithEvents(hNation,aNation)}));}}
+                />}
+              </div>}
             </div>
           );
         })}
@@ -619,6 +642,7 @@ const BRACKET_ROUNDS=[
 function KnockoutMatchCard({match,nations,onResult,disabled}){
   const[hi,setHi]=useState('');const[ai,setAi]=useState('');
   const[simResult,setSimResult]=useState(null);
+  const[expanded,setExpanded]=useState(false);
   const inp={background:C.surface,border:`1px solid ${C.border}`,borderRadius:5,padding:'5px 0',color:C.text,fontSize:15,fontFamily:"'Bebas Neue',sans-serif",outline:'none',width:'100%',textAlign:'center'};
   const hN=nations.find(n=>n.id===match?.homeId);
   const aN=nations.find(n=>n.id===match?.awayId);
@@ -647,36 +671,40 @@ function KnockoutMatchCard({match,nations,onResult,disabled}){
   );
   const canSave=hi!==''&&ai!==''&&!isNaN(parseInt(hi))&&!isNaN(parseInt(ai))&&parseInt(hi)!==parseInt(ai);
   const doSim=()=>{if(hN&&aN){let r=simWCMatchWithEvents(hN,aN);if(r.hGoals===r.aGoals)r=Math.random()<0.5?{...r,hGoals:r.hGoals+1,et:true}:{...r,aGoals:r.aGoals+1,et:true};setSimResult(r);}};
+  const isOpen=expanded||!!simResult;
   return(
-    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 14px',marginBottom:8,opacity:disabled?0.6:1}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden'}}>
-          <TeamBadge color={hN?.color||C.border} crest={hN?.crest} size={16}/>
+    <div style={{background:C.card,border:`1px solid ${isOpen?C.border:C.border+'55'}`,borderRadius:8,marginBottom:8,overflow:'hidden',opacity:disabled?0.6:1}}>
+      <div onClick={()=>setExpanded(x=>!x)} style={{display:'flex',alignItems:'center',padding:'10px 14px',cursor:'pointer',gap:6,userSelect:'none'}}>
+        <div style={{display:'flex',alignItems:'center',gap:5,flex:1,minWidth:0}}>
+          <TeamBadge color={hN?.color||C.border} crest={hN?.crest} size={14}/>
           <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{hN?.name||'TBD'}</span>
         </div>
-        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:12,color:C.muted,letterSpacing:2,flexShrink:0,margin:'0 8px'}}>vs</span>
-        <div style={{display:'flex',alignItems:'center',gap:5,overflow:'hidden',flexDirection:'row-reverse'}}>
-          <TeamBadge color={aN?.color||C.border} crest={aN?.crest} size={16}/>
-          <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{aN?.name||'TBD'}</span>
+        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:11,color:C.muted,letterSpacing:2,flexShrink:0}}>vs</span>
+        <div style={{display:'flex',alignItems:'center',gap:5,flex:1,minWidth:0,flexDirection:'row-reverse'}}>
+          <TeamBadge color={aN?.color||C.border} crest={aN?.crest} size={14}/>
+          <span style={{fontSize:12,color:C.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'right'}}>{aN?.name||'TBD'}</span>
         </div>
+        <span style={{color:C.muted,fontSize:10,flexShrink:0,marginLeft:4}}>{isOpen?'▲':'▼'}</span>
       </div>
-      {hN&&aN&&<PitchView homeNation={hN} awayNation={aN}/>}
-      {!disabled&&!simResult&&<>
-        <div style={{display:'grid',gridTemplateColumns:'1fr 20px 1fr',gap:4,alignItems:'center',marginTop:10,marginBottom:8}}>
-          <input type="number" min="0" value={hi} onChange={e=>setHi(e.target.value)} placeholder="0" style={inp}/>
-          <div style={{textAlign:'center',color:C.muted,fontFamily:"'Bebas Neue',sans-serif"}}>–</div>
-          <input type="number" min="0" value={ai} onChange={e=>setAi(e.target.value)} placeholder="0" style={inp}/>
-        </div>
-        <div style={{fontSize:10,color:C.muted,textAlign:'center',marginBottom:6}}>No draws — scores must differ</div>
-        <div style={{display:'flex',gap:6}}>
-          <Btn onClick={()=>{if(canSave)onResult(match,parseInt(hi),parseInt(ai));}} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
-          <Btn onClick={doSim} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
-        </div>
-      </>}
-      {!disabled&&simResult&&<SimResultPanel result={simResult} hNation={hN} aNation={aN} knockout
-        onSave={()=>{onResult(match,simResult.hGoals,simResult.aGoals,simResult.et);setSimResult(null);}}
-        onResim={doSim}
-      />}
+      {isOpen&&<div style={{padding:'0 14px 14px'}}>
+        {hN&&aN&&<PitchView homeNation={hN} awayNation={aN}/>}
+        {!disabled&&!simResult&&<>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 20px 1fr',gap:4,alignItems:'center',marginTop:10,marginBottom:8}}>
+            <input type="number" min="0" value={hi} onChange={e=>setHi(e.target.value)} placeholder="0" style={inp}/>
+            <div style={{textAlign:'center',color:C.muted,fontFamily:"'Bebas Neue',sans-serif"}}>–</div>
+            <input type="number" min="0" value={ai} onChange={e=>setAi(e.target.value)} placeholder="0" style={inp}/>
+          </div>
+          <div style={{fontSize:10,color:C.muted,textAlign:'center',marginBottom:6}}>No draws — scores must differ</div>
+          <div style={{display:'flex',gap:6}}>
+            <Btn onClick={()=>{if(canSave)onResult(match,parseInt(hi),parseInt(ai));}} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
+            <Btn onClick={doSim} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
+          </div>
+        </>}
+        {!disabled&&simResult&&<SimResultPanel result={simResult} hNation={hN} aNation={aN} knockout
+          onSave={()=>{onResult(match,simResult.hGoals,simResult.aGoals,simResult.et);setSimResult(null);}}
+          onResim={doSim}
+        />}
+      </div>}
     </div>
   );
 }
