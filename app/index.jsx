@@ -870,8 +870,8 @@ function RatingsTab({teams,nations}){
   const intlPlayers=nations.filter(n=>n.name).flatMap(n=>n.players.filter(p=>p.name).map(p=>({...p,_color:n.color,_crest:n.crest,_short:n.shortName||(n.name?.slice(0,3).toUpperCase()||''),_nation:n})));
   const intlSorted=[...intlPlayers].map(p=>({...p,val:getPlayerVal(p,metric)})).filter(p=>p.val>0).sort((a,b)=>b.val-a.val);
 
-  const TeamRow=({t,i,val,color})=>(
-    <div style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
+  const ratingTeamRow=(t,i,val,color)=>(
+    <div key={t.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
         <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
         <TeamBadge color={t.color} crest={t.crest} size={20}/>
@@ -881,8 +881,8 @@ function RatingsTab({teams,nations}){
       <div style={{height:4,background:C.border,borderRadius:2,overflow:"hidden"}}><div style={{width:`${((val||0)/10)*100}%`,height:"100%",background:color,borderRadius:2}}/></div>
     </div>
   );
-  const PlayerRow=({p,i,color})=>(
-    <div style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
+  const ratingPlayerRow=(p,i,color)=>(
+    <div key={p.id} style={{background:C.card,borderRadius:8,padding:"10px 14px",marginBottom:7}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:5}}>
         <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
         <TeamBadge color={p._color} crest={p._crest} size={18}/>
@@ -930,9 +930,9 @@ function RatingsTab({teams,nations}){
       {mode==='club'&&metric!=='val'&&(
         <div>
           <SLabel>Club Rankings</SLabel>
-          <div style={{marginBottom:24}}>{clubTeams.map((t,i)=><TeamRow key={t.id} t={t} i={i} val={metric==="atk"?t.atk:t.def} color={metric==="atk"?C.red:C.green}/>)}</div>
+          <div style={{marginBottom:24}}>{clubTeams.map((t,i)=>ratingTeamRow(t,i,metric==="atk"?t.atk:t.def,metric==="atk"?C.red:C.green))}</div>
           <SLabel>Top Players</SLabel>
-          {clubSorted.slice(0,20).map((p,i)=><PlayerRow key={p.id} p={p} i={i} color={metric==="atk"?C.red:C.green}/>)}
+          {clubSorted.slice(0,20).map((p,i)=>ratingPlayerRow(p,i,metric==="atk"?C.red:C.green))}
         </div>
       )}
 
@@ -941,9 +941,9 @@ function RatingsTab({teams,nations}){
           {namedNations.length===0&&<Empty icon="🌍" msg="No nations set up yet." hint="Go to Manage → Nations."/>}
           {namedNations.length>0&&<>
             <SLabel>Nation Rankings</SLabel>
-            <div style={{marginBottom:24}}>{namedNations.map((t,i)=><TeamRow key={t.id} t={t} i={i} val={metric==="atk"?t.atk:t.def} color={metric==="atk"?C.red:C.green}/>)}</div>
+            <div style={{marginBottom:24}}>{namedNations.map((t,i)=>ratingTeamRow(t,i,metric==="atk"?t.atk:t.def,metric==="atk"?C.red:C.green))}</div>
             <SLabel>Top Players</SLabel>
-            {intlSorted.slice(0,20).map((p,i)=><PlayerRow key={p.id} p={p} i={i} color={metric==="atk"?C.red:C.green}/>)}
+            {intlSorted.slice(0,20).map((p,i)=>ratingPlayerRow(p,i,metric==="atk"?C.red:C.green))}
           </>}
         </div>
       )}
