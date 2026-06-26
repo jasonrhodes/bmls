@@ -71,7 +71,7 @@ function pickWCLineup(nation){
   // Deduplicate by id first — a player added from BMLS keeps their original id,
   // so double-adds (fast click) produce duplicate ids that break the bench filter.
   const seen=new Set();
-  const ps=nation.players.filter(p=>p.name&&p.id!=null&&!seen.has(p.id)&&seen.add(p.id));
+  const ps=nation.players.filter(p=>p.name&&p.name.trim()&&p.id!=null&&!seen.has(p.id)&&seen.add(p.id));
   if(!ps.length)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
   let gk=ps.find(p=>p.position==='GK');
   // Exclude only the selected GK by id, NOT all GK-positioned players.
@@ -241,7 +241,7 @@ function PitchView({homeNation,awayNation}){
         {p._slot||p.position}
       </div>
       <span style={{fontSize:7.5,color:'rgba(255,255,255,0.65)',maxWidth:40,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',textAlign:'center',lineHeight:1.2}}>
-        {p.name.split(' ').pop()}
+        {(p.name.trim().split(/\s+/).filter(Boolean).pop()||p.name.trim()||'—')}
       </span>
     </div>
   );
@@ -294,14 +294,14 @@ function PitchView({homeNation,awayNation}){
               {aLU.bench.map(p=>(
                 <div key={p.id} style={{display:'flex',alignItems:'center',gap:3,background:awayNation.color+'1a',border:`1px solid ${awayNation.color}33`,borderRadius:4,padding:'2px 5px'}}>
                   <span style={{fontSize:6.5,color:awayNation.color,fontWeight:700,opacity:0.8}}>{p.position[0]}</span>
-                  <span style={{fontSize:7.5,color:'rgba(255,255,255,0.45)'}}>{p.name.split(' ').pop()}</span>
+                  <span style={{fontSize:7.5,color:'rgba(255,255,255,0.45)'}}>{(p.name.trim().split(/\s+/).filter(Boolean).pop()||p.name.trim()||'—')}</span>
                 </div>
               ))}
             </div>
             <div style={{display:'flex',gap:4,flexWrap:'wrap',flex:1,justifyContent:'flex-end'}}>
               {hLU.bench.map(p=>(
                 <div key={p.id} style={{display:'flex',alignItems:'center',gap:3,background:homeNation.color+'1a',border:`1px solid ${homeNation.color}33`,borderRadius:4,padding:'2px 5px'}}>
-                  <span style={{fontSize:7.5,color:'rgba(255,255,255,0.45)'}}>{p.name.split(' ').pop()}</span>
+                  <span style={{fontSize:7.5,color:'rgba(255,255,255,0.45)'}}>{(p.name.trim().split(/\s+/).filter(Boolean).pop()||p.name.trim()||'—')}</span>
                   <span style={{fontSize:6.5,color:homeNation.color,fontWeight:700,opacity:0.8}}>{p.position[0]}</span>
                 </div>
               ))}
