@@ -370,6 +370,7 @@ function NationsManageView({nations,setNations,teams,onToast}){
   const[addMode,setAddMode]=useState(null);
   const[search,setSearch]=useState('');
   const[newPlayer,setNewPlayer]=useState(null);
+  const[expandedPid,setExpandedPid]=useState(null);
   const flagRef=useRef();
   const allBmlsPlayers=(teams||[]).flatMap(t=>t.players.map(p=>({...p,club:t.name,clubColor:t.color})));
   const filtered=allBmlsPlayers.filter(p=>p.name&&p.name.toLowerCase().includes(search.toLowerCase()));
@@ -398,16 +399,49 @@ function NationsManageView({nations,setNations,teams,onToast}){
           <div style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase'}}>Squad</div>
           <div style={{fontSize:11,color:editNation.players.length>=8?C.gold:C.muted}}>{editNation.players.length}/8</div>
         </div>
-        {editNation.players.map(p=>(
-          <div key={p.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:'10px 12px',marginBottom:6,display:'flex',alignItems:'center',gap:10}}>
-            <div style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:'2px 6px',fontSize:10,fontWeight:700,flexShrink:0}}>{p.position}</div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:600,color:C.text}}>{p.name}</div>
-              <div style={{fontSize:11,color:C.muted}}>{p.club||'—'}</div>
+        {editNation.players.map(p=>{
+          const isExp=expandedPid===p.id;
+          const updatePlayer=patch=>{const u={...editNation,players:editNation.players.map(x=>x.id===p.id?{...x,...patch}:x)};setEditNation(u);saveNation(u);};
+          return(
+            <div key={p.id} style={{background:C.card,border:`1px solid ${isExp?C.accent:C.border}`,borderRadius:8,marginBottom:6,overflow:'hidden'}}>
+              <div onClick={()=>setExpandedPid(isExp?null:p.id)} style={{padding:'10px 12px',display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                <div style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:'2px 6px',fontSize:10,fontWeight:700,flexShrink:0}}>{p.position}{p.wide&&p.position==='DEF'?' W':''}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{p.name}</div>
+                  <div style={{fontSize:11,color:C.muted}}>{p.club||'—'}</div>
+                </div>
+                <div style={{fontSize:13,fontFamily:"'Bebas Neue',sans-serif",color:C.text,minWidth:20,textAlign:'right'}}>
+                  {p.position==='MDF'?`A${p.mdfAtkScore||'?'}/D${p.mdfDefScore||'?'}`:p.position!=='GK'?(p.score||'?'):'GK'}
+                </div>
+                <button onClick={e=>{e.stopPropagation();const u={...editNation,players:editNation.players.filter(x=>x.id!==p.id)};setExpandedPid(null);setEditNation(u);saveNation(u);}} style={{background:'none',border:'none',color:C.red,fontSize:16,cursor:'pointer',padding:'0 4px'}}>×</button>
+              </div>
+              {isExp&&(
+                <div style={{padding:'0 12px 12px',borderTop:`1px solid ${C.border}`,paddingTop:10}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+                    <div>
+                      <label style={{fontSize:10,color:C.muted,display:'block',marginBottom:3}}>Position</label>
+                      <select value={p.position} onChange={e=>updatePlayer({position:e.target.value,wide:e.target.value!=='DEF'?false:p.wide})} style={sel}>{POSITIONS.map(pos=><option key={pos}>{pos}</option>)}</select>
+                    </div>
+                    {p.position==='MDF'?(
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+                        <div><label style={{fontSize:10,color:C.muted,display:'block',marginBottom:3}}>ATK</label><input type="number" min="1" max="10" step="0.5" value={p.mdfAtkScore||7} onChange={e=>updatePlayer({mdfAtkScore:+e.target.value})} style={sel}/></div>
+                        <div><label style={{fontSize:10,color:C.muted,display:'block',marginBottom:3}}>DEF</label><input type="number" min="1" max="10" step="0.5" value={p.mdfDefScore||7} onChange={e=>updatePlayer({mdfDefScore:+e.target.value})} style={sel}/></div>
+                      </div>
+                    ):p.position!=='GK'?(
+                      <div><label style={{fontSize:10,color:C.muted,display:'block',marginBottom:3}}>Score</label><input type="number" min="1" max="10" step="0.5" value={p.score||7} onChange={e=>updatePlayer({score:+e.target.value})} style={sel}/></div>
+                    ):<div/>}
+                  </div>
+                  {p.position==='DEF'&&(
+                    <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',fontSize:13,color:C.text}}>
+                      <input type="checkbox" checked={!!p.wide} onChange={e=>updatePlayer({wide:e.target.checked})} style={{width:14,height:14,cursor:'pointer'}}/>
+                      Wide (plays as winger)
+                    </label>
+                  )}
+                </div>
+              )}
             </div>
-            <button onClick={()=>{const u={...editNation,players:editNation.players.filter(x=>x.id!==p.id)};setEditNation(u);saveNation(u);}} style={{background:'none',border:'none',color:C.red,fontSize:16,cursor:'pointer',padding:'0 4px'}}>×</button>
-          </div>
-        ))}
+          );
+        })}
         {addMode==='bmls'&&(
           <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:10,padding:14,marginTop:10,marginBottom:10}}>
             <div style={{fontSize:11,fontWeight:600,color:C.muted,marginBottom:8}}>Pick from BMLS roster</div>
