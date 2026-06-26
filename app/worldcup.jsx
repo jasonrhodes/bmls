@@ -158,6 +158,70 @@ function simWCKnockout(home,away){
   if(r.hGoals===r.aGoals)return Math.random()<0.5?{...r,hGoals:r.hGoals+1,et:true}:{...r,aGoals:r.aGoals+1,et:true};
   return r;
 }
+function simWCMatchFull(home,away,{knockout=false}={}){
+  const hLU=pickWCLineup(home),aLU=pickWCLineup(away);
+  const hStarters=[...(hLU.gk?[{...hLU.gk,_slot:'GK'}]:[]),...hLU.starters];
+  const aStarters=[...(aLU.gk?[{...aLU.gk,_slot:'GK'}]:[]),...aLU.starters];
+  const hBench=[...hLU.bench],aBench=[...aLU.bench];
+  const hr=lineupRatings(home),ar=lineupRatings(away);
+  const hxg=Math.max(0.1,hr.atk*0.14+(10-ar.def)*0.09+0.25);
+  const axg=Math.max(0.1,ar.atk*0.14+(10-hr.def)*0.09+0.25);
+  const pois=λ=>{const L=Math.exp(-Math.min(λ,8));let k=0,p=1;do{k++;p*=Math.random();}while(p>L);return k-1;};
+  const mnt=(a=1,b=90)=>Math.floor(Math.random()*(b-a+1))+a;
+  const events=[],redAt={},injuredAt={},subbedOff={},subOnInfo={};
+  const outAt=(starters,team,min)=>[
+    ...starters.filter(p=>p._slot!=='GK'&&(!redAt[p.id]||redAt[p.id]>min)&&(!injuredAt[p.id]||injuredAt[p.id]>min)&&(!subbedOff[p.id]||subbedOff[p.id]>min)),
+    ...Object.values(subOnInfo).filter(s=>s.team===team&&s.minute<=min&&(!redAt[s.player.id]||redAt[s.player.id]>min)&&(!injuredAt[s.player.id]||injuredAt[s.player.id]>min)).map(s=>s.player)
+  ];
+  const doReds=(starters,team)=>starters.forEach(p=>{if(Math.random()<0.006){const m=mnt();redAt[p.id]=m;events.push({team,type:'red',player:p,minute:m});}});
+  const doInj=(starters,team)=>starters.filter(p=>p._slot!=='GK'&&!redAt[p.id]).forEach(p=>{if(Math.random()<0.008){const m=mnt();injuredAt[p.id]=m;events.push({team,type:'injury',player:p,minute:m});}});
+  doReds(hStarters,'home');doReds(aStarters,'away');
+  doInj(hStarters,'home');doInj(aStarters,'away');
+  const doSubs=(starters,bench,team)=>{
+    const pool=[...bench];const used=new Set();
+    starters.filter(p=>injuredAt[p.id]&&p._slot!=='GK').forEach(inj=>{
+      const bi=pool.findIndex(b=>!used.has(b.id));if(bi<0)return;
+      const on=pool[bi];used.add(on.id);
+      const m=Math.min(90,(injuredAt[inj.id]||1)+Math.floor(Math.random()*5)+1);
+      subbedOff[inj.id]=m;subOnInfo[on.id]={player:on,minute:m,team};
+      events.push({team,type:'sub',minute:m,playerOn:on,playerOff:inj,injury:true});
+    });
+    const tac=pool.filter(b=>!used.has(b.id));
+    if(tac.length&&Math.random()<0.5){
+      const on=tac[0];const offPool=outAt(starters,team,65);
+      const off=offPool[Math.floor(Math.random()*offPool.length)];
+      if(off){const m=mnt(60,85);subbedOff[off.id]=m;subOnInfo[on.id]={player:on,minute:m,team};events.push({team,type:'sub',minute:m,playerOn:on,playerOff:off});}
+    }
+  };
+  doSubs(hStarters,hBench,'home');doSubs(aStarters,aBench,'away');
+  const hGoals=pois(hxg),aGoals=pois(axg);
+  const genGoals=(n,starters,team)=>Array.from({length:n},()=>{
+    const m=mnt();const pool=outAt(starters,team,m);if(!pool.length)return null;
+    const sc=wcWPick(pool,wcScorW);const ac=pool.filter(p=>p.id!==sc.id);
+    const ast=Math.random()<0.72&&ac.length?wcWPick(ac,p=>wcAstW(p,sc.id)):null;
+    return{team,type:'goal',player:sc,assist:ast,minute:m};
+  }).filter(Boolean);
+  events.push(...genGoals(hGoals,hStarters,'home'),...genGoals(aGoals,aStarters,'away'));
+  outAt(hStarters,'home',90).forEach(p=>{if(Math.random()<0.04)events.push({team:'home',type:'yellow',player:p,minute:mnt()});});
+  outAt(aStarters,'away',90).forEach(p=>{if(Math.random()<0.04)events.push({team:'away',type:'yellow',player:p,minute:mnt()});});
+  events.sort((a,b)=>a.minute-b.minute);
+  const fH=events.filter(e=>e.team==='home'&&e.type==='goal').length;
+  const fA=events.filter(e=>e.team==='away'&&e.type==='goal').length;
+  let et=false;
+  if(knockout&&fH===fA){
+    et=true;const etMin=mnt(91,120);const etTeam=Math.random()<0.5?'home':'away';
+    const etPool=etTeam==='home'?outAt(hStarters,'home',90):outAt(aStarters,'away',90);
+    if(etPool.length){
+      const sc=wcWPick(etPool,wcScorW);const ac=etPool.filter(p=>p.id!==sc.id);
+      const ast=Math.random()<0.72&&ac.length?wcWPick(ac,p=>wcAstW(p,sc.id)):null;
+      events.push({team:etTeam,type:'goal',player:sc,assist:ast,minute:etMin});
+      events.sort((a,b)=>a.minute-b.minute);
+    }
+  }
+  const tH=events.filter(e=>e.team==='home'&&e.type==='goal').length;
+  const tA=events.filter(e=>e.team==='away'&&e.type==='goal').length;
+  return{hGoals:tH,aGoals:tA,events,et,maxMinute:et?120:90};
+}
 
 // Group match pairs: index into group's nationIds array
 const GROUP_PAIRS=[[0,1],[0,2],[1,2]];
@@ -347,44 +411,90 @@ function PitchView({homeNation,awayNation}){
   );
 }
 
-function SimResultPanel({result,hNation,aNation,onSave,onResim,knockout}){
+function WCMatchSimPanel({hNation,aNation,sim,onSimulate,onSave,onResim,knockout}){
+  const[minute,setMinute]=useState(0);
+  const[shown,setShown]=useState([]);
+  const[score,setScore]=useState({h:0,a:0});
+  const[speed,setSpeed]=useState(1);
+  const[running,setRunning]=useState(false);
+  const[done,setDone]=useState(false);
+  const iRef=useRef(null);
+  const feedRef=useRef(null);
+  const maxMin=sim?.maxMinute||90;
+  useEffect(()=>{
+    if(!sim)return;
+    clearInterval(iRef.current);
+    setMinute(0);setShown([]);setScore({h:0,a:0});setDone(false);setRunning(true);
+  },[sim]);
+  useEffect(()=>{
+    if(!running||!sim)return;
+    clearInterval(iRef.current);
+    iRef.current=setInterval(()=>setMinute(m=>m<maxMin?m+1:maxMin),1000/speed);
+    return()=>clearInterval(iRef.current);
+  },[running,speed,sim]);
+  useEffect(()=>{
+    if(!sim||minute===0)return;
+    const now=sim.events.filter(e=>e.minute===minute);
+    if(now.length){
+      setShown(p=>[...p,...now]);
+      const goals=now.filter(e=>e.type==='goal');
+      if(goals.length)setScore(s=>{let h=s.h,a=s.a;goals.forEach(e=>{if(e.team==='home')h++;else a++;});return{h,a};});
+    }
+    if(minute>=maxMin){clearInterval(iRef.current);setRunning(false);setDone(true);}
+  },[minute]);
+  useEffect(()=>{if(feedRef.current)feedRef.current.scrollTop=feedRef.current.scrollHeight;},[shown]);
+  const ico=t=>t==='goal'?'⚽':t==='yellow'?'🟡':t==='sub'?'🔄':t==='injury'?'🤕':'🟥';
+  const evMain=e=>e.type==='goal'?e.player.name:e.type==='sub'?`↑ ${e.playerOn.name}`:e.player.name;
+  const evSub=e=>e.type==='sub'?`↓ ${e.playerOff.name}`:e.assist?`↗ ${e.assist.name}`:'';
+  const timeLabel=()=>{
+    if(done)return sim?.et?'FULL TIME · AET':'FULL TIME';
+    if(minute===45)return'HALF TIME';
+    if(sim?.et&&minute>90)return`${minute}' AET`;
+    if(sim?.et&&minute===90)return'EXTRA TIME';
+    if(running)return`${minute}'`;
+    return'—';
+  };
   return(
     <div style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:8,padding:12,marginTop:8}}>
-      <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:8,marginBottom:result.events?.length?10:8}}>
-        <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:5}}>
-          <span style={{fontSize:11,color:C.text,fontWeight:result.hGoals>result.aGoals?700:400,textAlign:'right'}}>{hNation?.name}</span>
-          <TeamBadge color={hNation?.color||C.border} crest={hNation?.crest} size={16}/>
-        </div>
-        <div style={{textAlign:'center'}}>
-          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:C.gold,letterSpacing:3}}>{result.hGoals}–{result.aGoals}</div>
-          {result.et&&<div style={{fontSize:9,color:C.muted,letterSpacing:1,marginTop:-4}}>AET</div>}
-        </div>
-        <div style={{display:'flex',alignItems:'center',gap:5}}>
-          <TeamBadge color={aNation?.color||C.border} crest={aNation?.crest} size={16}/>
-          <span style={{fontSize:11,color:C.text,fontWeight:result.aGoals>result.hGoals?700:400}}>{aNation?.name}</span>
-        </div>
-      </div>
-      {result.events?.length>0&&(
-        <div style={{borderTop:`1px solid ${C.border}33`,paddingTop:8,marginBottom:10}}>
-          {result.events.map((e,i)=>(
-            <div key={i} style={{display:'flex',alignItems:'center',gap:6,padding:'3px 0',fontSize:11}}>
-              <span style={{color:C.muted,minWidth:24,textAlign:'right',fontFamily:"'Bebas Neue',sans-serif"}}>{e.minute}'</span>
-              <span>⚽</span>
-              <span style={{flex:1}}>
-                <span style={{color:e.team==='home'?hNation?.color||C.text:aNation?.color||C.text,fontWeight:600}}>{e.player.name}</span>
-                {e.assist&&<span style={{color:C.muted}}> ↩ {e.assist.name}</span>}
-              </span>
-              <span style={{fontSize:9,color:C.muted}}>{e.team==='home'?hNation?.name:aNation?.name}</span>
+      {!sim?(
+        <div style={{textAlign:'center'}}><Btn onClick={onSimulate}>▶ Simulate</Btn></div>
+      ):(
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr auto 1fr',alignItems:'center',gap:6,marginBottom:4}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'flex-end',gap:4}}>
+              <span style={{fontSize:11,color:C.text,fontWeight:score.h>score.a?700:400,textAlign:'right'}}>{hNation?.name}</span>
+              <TeamBadge color={hNation?.color||C.border} crest={hNation?.crest} size={14}/>
             </div>
-          ))}
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,color:C.gold,letterSpacing:3,textAlign:'center',lineHeight:1,padding:'0 6px'}}>{score.h}–{score.a}</div>
+            <div style={{display:'flex',alignItems:'center',gap:4}}>
+              <TeamBadge color={aNation?.color||C.border} crest={aNation?.crest} size={14}/>
+              <span style={{fontSize:11,color:C.text,fontWeight:score.a>score.h?700:400}}>{aNation?.name}</span>
+            </div>
+          </div>
+          <div style={{textAlign:'center',fontSize:10,fontWeight:700,letterSpacing:2,color:done?C.green:running?C.red:C.muted,marginBottom:6}}>{timeLabel()}</div>
+          {running&&<div style={{height:2,background:C.surface,borderRadius:1,marginBottom:6,overflow:'hidden'}}><div style={{height:'100%',background:sim?.et&&minute>90?C.gold:C.accent,width:`${(minute/maxMin)*100}%`,transition:'width 0.9s linear'}}/></div>}
+          {running&&<div style={{display:'flex',gap:5,marginBottom:8,justifyContent:'center'}}>{[1,2,5].map(s=><button key={s} onClick={()=>setSpeed(s)} style={{background:speed===s?`${C.accent}22`:'transparent',color:speed===s?C.accent:C.muted,border:`1px solid ${speed===s?C.accent:C.border}`,borderRadius:4,padding:'3px 10px',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{s}×</button>)}</div>}
+          <div ref={feedRef} style={{borderTop:`1px solid ${C.border}33`,borderBottom:`1px solid ${C.border}33`,padding:'8px 0',maxHeight:180,overflowY:'auto',marginBottom:10}}>
+            {shown.length===0&&<div style={{fontSize:11,color:C.muted,textAlign:'center',padding:'8px 0'}}>—</div>}
+            {shown.map((e,i)=>{
+              const isH=e.team==='home';
+              const hC=hNation?.color||C.text,aC=aNation?.color||C.text;
+              const main=evMain(e),sub2=evSub(e);
+              return(
+                <div key={i} style={{display:'grid',gridTemplateColumns:'1fr 32px 1fr',gap:2,marginBottom:5,alignItems:'start'}}>
+                  {isH?<div style={{textAlign:'right',paddingRight:4}}><div style={{fontSize:11,color:e.type==='sub'?C.muted:hC,fontWeight:600}}>{main} {ico(e.type)}</div>{sub2&&<div style={{fontSize:9,color:C.muted}}>{sub2}</div>}</div>:<div/>}
+                  <div style={{textAlign:'center',fontSize:9,color:C.muted,fontWeight:700,paddingTop:2}}>{e.minute}'</div>
+                  {!isH?<div style={{paddingLeft:4}}><div style={{fontSize:11,color:e.type==='sub'?C.muted:aC,fontWeight:600}}>{ico(e.type)} {main}</div>{sub2&&<div style={{fontSize:9,color:C.muted,paddingLeft:14}}>{sub2}</div>}</div>:<div/>}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <Btn onClick={onResim||onSimulate} variant="secondary" style={{flex:1,fontSize:11}}>↺ Re-sim</Btn>
+            {done&&<Btn onClick={onSave} variant="success" style={{flex:1,fontSize:11}}>✓ Save Result</Btn>}
+          </div>
         </div>
       )}
-      {result.hGoals===0&&result.aGoals===0&&<div style={{color:C.muted,fontSize:11,textAlign:'center',marginBottom:8,fontStyle:'italic'}}>Goalless draw</div>}
-      {knockout&&<div style={{fontSize:10,color:C.muted,textAlign:'center',marginBottom:8}}>No draws in knockout — scores must differ</div>}
-      <div style={{display:'flex',gap:6}}>
-        <Btn onClick={onSave} variant="success" style={{flex:1,fontSize:11}}>✓ Save Result</Btn>
-        <Btn onClick={onResim} variant="secondary" style={{flex:1,fontSize:11}}>↺ Re-sim</Btn>
-      </div>
     </div>
   );
 }
@@ -706,13 +816,14 @@ function GroupCard({group,nations,groupMatches,onResult}){
                   </div>
                   <div style={{display:'flex',gap:6}}>
                     <Btn onClick={()=>{if(canSave)onResult(mid,group.nationIds[ai2],group.nationIds[bi2],parseInt(hv),parseInt(av));}} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
-                    <Btn onClick={()=>{if(hNation&&aNation)setSimResult(x=>({...x,[mid]:simWCMatchWithEvents(hNation,aNation)}));}} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
                   </div>
                 </>}
-                {sr&&<SimResultPanel result={sr} hNation={hNation} aNation={aNation}
-                  onSave={()=>{onResult(mid,group.nationIds[ai2],group.nationIds[bi2],sr.hGoals,sr.aGoals);setSimResult(x=>({...x,[mid]:null}));}}
-                  onResim={()=>{if(hNation&&aNation)setSimResult(x=>({...x,[mid]:simWCMatchWithEvents(hNation,aNation)}));}}
-                />}
+                <WCMatchSimPanel
+                  hNation={hNation} aNation={aNation} sim={sr||null}
+                  onSimulate={()=>{if(hNation&&aNation)setSimResult(x=>({...x,[mid]:simWCMatchFull(hNation,aNation)}));}}
+                  onResim={()=>{if(hNation&&aNation)setSimResult(x=>({...x,[mid]:simWCMatchFull(hNation,aNation)}));}}
+                  onSave={()=>{if(sr){onResult(mid,group.nationIds[ai2],group.nationIds[bi2],sr.hGoals,sr.aGoals);setSimResult(x=>({...x,[mid]:null}));}}}
+                />
               </div>}
             </div>
           );
@@ -799,7 +910,7 @@ function KnockoutMatchCard({match,nations,onResult,disabled}){
     </div>
   );
   const canSave=hi!==''&&ai!==''&&!isNaN(parseInt(hi))&&!isNaN(parseInt(ai))&&parseInt(hi)!==parseInt(ai);
-  const doSim=()=>{if(hN&&aN){let r=simWCMatchWithEvents(hN,aN);if(r.hGoals===r.aGoals)r=Math.random()<0.5?{...r,hGoals:r.hGoals+1,et:true}:{...r,aGoals:r.aGoals+1,et:true};setSimResult(r);}};
+  const doSim=()=>{if(hN&&aN)setSimResult(simWCMatchFull(hN,aN,{knockout:true}));};
   const isOpen=expanded||!!simResult;
   return(
     <div style={{background:C.card,border:`1px solid ${isOpen?C.border:C.border+'55'}`,borderRadius:8,marginBottom:8,overflow:'hidden',opacity:disabled?0.6:1}}>
@@ -826,12 +937,12 @@ function KnockoutMatchCard({match,nations,onResult,disabled}){
           <div style={{fontSize:10,color:C.muted,textAlign:'center',marginBottom:6}}>No draws — scores must differ</div>
           <div style={{display:'flex',gap:6}}>
             <Btn onClick={()=>{if(canSave)onResult(match,parseInt(hi),parseInt(ai));}} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
-            <Btn onClick={doSim} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
           </div>
         </>}
-        {!disabled&&simResult&&<SimResultPanel result={simResult} hNation={hN} aNation={aN} knockout
-          onSave={()=>{onResult(match,simResult.hGoals,simResult.aGoals,simResult.et);setSimResult(null);}}
-          onResim={doSim}
+        {!disabled&&<WCMatchSimPanel
+          hNation={hN} aNation={aN} sim={simResult} knockout
+          onSimulate={doSim} onResim={doSim}
+          onSave={()=>{if(simResult){onResult(match,simResult.hGoals,simResult.aGoals,simResult.et);setSimResult(null);}}}
         />}
       </div>}
     </div>
@@ -1203,6 +1314,7 @@ function CareerTab({nations,wcMeta,groupMatches}){
   const qualified=groupComplete&&standings.indexOf(myStanding)<=1;
   const eliminated=groupComplete&&!qualified;
   const[hi,setHi]=useState('');const[ai,setAi]=useState('');
+  const[careerSim,setCareerSim]=useState(null);
   const inp={background:C.surface,border:`1px solid ${C.border}`,borderRadius:5,padding:'5px 0',color:C.text,fontSize:15,fontFamily:"'Bebas Neue',sans-serif",outline:'none',width:'100%',textAlign:'center'};
   const playMatch=(matchIdx,isHome,oppId)=>{
     const mid=`career_gm_${myGroup.id}${matchIdx+1}`;
@@ -1229,22 +1341,28 @@ function CareerTab({nations,wcMeta,groupMatches}){
     const mid=`career_gm_${myGroup.id}${matchIdx+1}`;
     if(careerResults[mid])return;
     const otherIdx=GROUP_PAIRS.findIndex(([ai2,bi2])=>myGroup.nationIds[ai2]!==career.nationId&&myGroup.nationIds[bi2]!==career.nationId);
-    const updates={};
+    const pendingUpdates={};
     if(otherIdx>=0){
       const omid=`career_gm_${myGroup.id}${otherIdx+1}`;
       if(!careerResults[omid]){
         const[oai,obi]=GROUP_PAIRS[otherIdx];
         const oH=nations.find(n=>n.id===myGroup.nationIds[oai]);
         const oA=nations.find(n=>n.id===myGroup.nationIds[obi]);
-        if(oH&&oA){const or=simWCMatch(oH,oA);updates[omid]={homeScore:or.hGoals,awayScore:or.aGoals};}
+        if(oH&&oA){const or=simWCMatch(oH,oA);pendingUpdates[omid]={homeScore:or.hGoals,awayScore:or.aGoals};}
       }
     }
     const hN=isHome?myNation:nations.find(n=>n.id===oppId);
     const aN=isHome?nations.find(n=>n.id===oppId):myNation;
     if(!hN||!aN)return;
-    const r=simWCMatch(hN,aN);
-    updates[mid]={homeScore:r.hGoals,awayScore:r.aGoals};
+    const result=simWCMatchFull(hN,aN);
+    setCareerSim({matchId:mid,hNation:hN,aNation:aN,result,type:'group',pendingUpdates});
+  };
+  const applyGroupSim=()=>{
+    if(!careerSim||careerSim.type!=='group')return;
+    const{matchId,result,pendingUpdates}=careerSim;
+    const updates={...pendingUpdates,[matchId]:{homeScore:result.hGoals,awayScore:result.aGoals}};
     saveCareer({...career,results:{...careerResults,...updates}});
+    setCareerSim(null);
   };
   // Knockout phase
   const[koPhase,setKoPhase]=useState(career.koPhase||'qf');
@@ -1257,17 +1375,29 @@ function CareerTab({nations,wcMeta,groupMatches}){
     saveCareer({...career,koPhase:nextPhase||phase,koResults:kr,koOpponent:nextOpp||null});
   };
   const doKoMatch=(isHome,oppNation)=>{
-    const hN=isHome?myNation:oppNation;
-    const aN=isHome?oppNation:myNation;
-    const r=simWCKnockout(hN,aN);
     const hv=parseInt(koHi),av=parseInt(koAi);
-    const res=(!isNaN(hv)&&!isNaN(av)&&hv!==av)?{homeScore:hv,awayScore:av}:{homeScore:r.hGoals,awayScore:r.aGoals,simmed:true};
-    const myWon=isHome?res.homeScore>res.awayScore:res.awayScore>res.homeScore;
+    if(isNaN(hv)||isNaN(av)||hv===av)return;
+    const myWon=isHome?hv>av:av>hv;
     const phaseOrder=['qf','sf','final'];
     const nextPhase=myWon?phaseOrder[phaseOrder.indexOf(koPhase)+1]||'champion':'eliminated';
-    // Pick random opponent for next round
     const nextOpp=myWon&&nextPhase!=='champion'?named.filter(n=>n.id!==career.nationId)[Math.floor(Math.random()*named.filter(n=>n.id!==career.nationId).length)]?.id||null:null;
-    saveKo(koPhase,res,nextOpp,nextPhase);
+    saveKo(koPhase,{homeScore:hv,awayScore:av},nextOpp,nextPhase);
+    setKoHi('');setKoAi('');
+  };
+  const startKoSim=(isHome,oppNation)=>{
+    const hN=isHome?myNation:oppNation;
+    const aN=isHome?oppNation:myNation;
+    if(!hN||!aN)return;
+    const result=simWCMatchFull(hN,aN,{knockout:true});
+    setCareerSim({matchId:koPhase,hNation:hN,aNation:aN,result,type:'ko',isHome,oppNation});
+  };
+  const applyKoResult=(res,isHome)=>{
+    const myWon=isHome?res.hGoals>res.aGoals:res.aGoals>res.hGoals;
+    const phaseOrder=['qf','sf','final'];
+    const nextPhase=myWon?phaseOrder[phaseOrder.indexOf(koPhase)+1]||'champion':'eliminated';
+    const nextOpp=myWon&&nextPhase!=='champion'?named.filter(n=>n.id!==career.nationId)[Math.floor(Math.random()*named.filter(n=>n.id!==career.nationId).length)]?.id||null:null;
+    saveKo(koPhase,{homeScore:res.hGoals,awayScore:res.aGoals,simmed:true,et:res.et||false},nextOpp,nextPhase);
+    setCareerSim(null);
     setKoHi('');setKoAi('');
   };
   const champNation=koResults.final&&(koResults.final.homeScore>koResults.final.awayScore?myNation:nations.find(n=>n.id===koOpponent));
@@ -1339,6 +1469,14 @@ function CareerTab({nations,wcMeta,groupMatches}){
                       <Btn onClick={()=>playMatch(matchIdx,isHome,pairOppId)} style={{flex:1,fontSize:11,opacity:hi!==''&&ai!==''?1:0.4}}>Save Result</Btn>
                       <Btn onClick={()=>simMyMatch(matchIdx,isHome,pairOppId)} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
                     </div>
+                    {careerSim?.matchId===mid&&(
+                      <WCMatchSimPanel
+                        hNation={careerSim.hNation} aNation={careerSim.aNation} sim={careerSim.result}
+                        onSimulate={()=>simMyMatch(matchIdx,isHome,pairOppId)}
+                        onResim={()=>simMyMatch(matchIdx,isHome,pairOppId)}
+                        onSave={applyGroupSim}
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -1412,8 +1550,16 @@ function CareerTab({nations,wcMeta,groupMatches}){
             <div style={{fontSize:10,color:C.muted,textAlign:'center',marginBottom:8}}>No draws in knockout · Enter scores or simulate</div>
             <div style={{display:'flex',gap:6}}>
               <Btn onClick={()=>doKoMatch(true,oppNation)} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
-              <Btn onClick={()=>doKoMatch(true,oppNation)} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
+              <Btn onClick={()=>startKoSim(true,oppNation)} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
             </div>
+            {careerSim?.type==='ko'&&(
+              <WCMatchSimPanel
+                hNation={careerSim.hNation} aNation={careerSim.aNation} sim={careerSim.result} knockout
+                onSimulate={()=>startKoSim(careerSim.isHome,careerSim.oppNation)}
+                onResim={()=>startKoSim(careerSim.isHome,careerSim.oppNation)}
+                onSave={()=>applyKoResult(careerSim.result,careerSim.isHome)}
+              />
+            )}
           </div>
         );
       })()}
