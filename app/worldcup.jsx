@@ -251,6 +251,31 @@ function PitchView({homeNation,awayNation}){
   const Row=({players,color})=>players.length?(
     <div style={{display:'flex',justifyContent:'center',gap:4,padding:'2px 0',alignItems:'flex-start'}}>{players.map(p=><DotEl key={p.id} p={p} color={color}/>)}</div>
   ):null;
+  // DEF row: same as Row but with more horizontal spread
+  const DefRow=({players,color})=>players.length?(
+    <div style={{display:'flex',justifyContent:'center',gap:18,padding:'2px 0',alignItems:'flex-start'}}>{players.map(p=><DotEl key={p.id} p={p} color={color}/>)}</div>
+  ):null;
+  // MDF row: for 2 MDFs, sort defensive (higher mdfDefScore) deeper toward keeper,
+  // attacking (higher mdfAtkScore) higher toward FWDs — mirrored per side.
+  const MdfRow=({players,color,home})=>{
+    if(!players.length)return null;
+    let arr=players;
+    if(players.length===2){
+      const[a,b]=players;
+      const aDefRating=(a.mdfDefScore||5),bDefRating=(b.mdfDefScore||5);
+      // defensive MDF first, attacking MDF second
+      arr=aDefRating>=bDefRating?[a,b]:[b,a];
+    }
+    return(
+      <div style={{display:'flex',justifyContent:'center',gap:20,padding:'2px 0',alignItems:'flex-start'}}>
+        {arr.map((p,idx)=>{
+          const isDefensive=arr.length===2&&idx===0;
+          const mt=arr.length===2?(isDefensive?(home?10:0):(home?0:10)):0;
+          return <DotEl key={p.id} p={p} color={color} mt={mt}/>;
+        })}
+      </div>
+    );
+  };
   // FWD row: wide players a bit to the sides and a bit more withdrawn toward keeper
   // gap:22 gives spread without hitting the edges; marginTop offset for depth
   const FwdRow=({players,color,home})=>{
@@ -283,13 +308,13 @@ function PitchView({homeNation,awayNation}){
         <span style={{fontSize:7.5,color:'rgba(255,255,255,0.4)',letterSpacing:1.5,textTransform:'uppercase'}}>{awayNation.name} · {aLU.formation.name}</span>
       </div>
       <Row players={aGk} color={awayNation.color}/>
-      <Row players={aDef} color={awayNation.color}/>
-      <Row players={aMdf} color={awayNation.color}/>
+      <DefRow players={aDef} color={awayNation.color}/>
+      <MdfRow players={aMdf} color={awayNation.color} home={false}/>
       <FwdRow players={aFwd} color={awayNation.color} home={false}/>
       <div style={{height:1,background:'rgba(255,255,255,0.1)',margin:'6px 16px'}}/>
       <FwdRow players={hFwd} color={homeNation.color} home={true}/>
-      <Row players={hMdf} color={homeNation.color}/>
-      <Row players={hDef} color={homeNation.color}/>
+      <MdfRow players={hMdf} color={homeNation.color} home={true}/>
+      <DefRow players={hDef} color={homeNation.color}/>
       <Row players={hGk} color={homeNation.color}/>
       <div style={{display:'flex',alignItems:'center',gap:4,marginTop:2,justifyContent:'flex-end',paddingRight:8}}>
         <span style={{fontSize:7.5,color:'rgba(255,255,255,0.4)',letterSpacing:1.5,textTransform:'uppercase'}}>{homeNation.name} · {hLU.formation.name}</span>
