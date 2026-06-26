@@ -217,17 +217,17 @@ function PitchView({homeNation,awayNation}){
       </span>
     </div>
   );
-  // Normal row: centered, equal spacing
   const Row=({players,color})=>players.length?(
     <div style={{display:'flex',justifyContent:'center',gap:4,padding:'2px 0',alignItems:'flex-start'}}>{players.map(p=><DotEl key={p.id} p={p} color={color}/>)}</div>
   ):null;
-  // FWD row: wide players spread to sides; center FWDs pushed toward center line (home=mt:0, away=mt:8), wide FWDs slightly behind (home=mt:8, away=mt:0)
+  // FWD row: wide players a bit to the sides and a bit more withdrawn toward keeper
+  // gap:22 gives spread without hitting the edges; marginTop offset for depth
   const FwdRow=({players,color,home})=>{
     if(!players.length)return null;
     const arr=arrangeFWDs(players);
     return(
-      <div style={{display:'flex',justifyContent:arr.length>1?'space-around':'center',padding:'2px 4px',alignItems:'flex-start'}}>
-        {arr.map(p=><DotEl key={p.id} p={p} color={color} mt={isWide(p)?(home?8:0):(home?0:8)}/>)}
+      <div style={{display:'flex',justifyContent:'center',gap:22,padding:'2px 0',alignItems:'flex-start'}}>
+        {arr.map(p=><DotEl key={p.id} p={p} color={color} mt={isWide(p)?(home?12:0):(home?0:12)}/>)}
       </div>
     );
   };
@@ -258,6 +258,29 @@ function PitchView({homeNation,awayNation}){
         <span style={{fontSize:7.5,color:'rgba(255,255,255,0.4)',letterSpacing:1.5,textTransform:'uppercase'}}>{homeNation.name} · {hLU.formation.name}</span>
         <TeamBadge color={homeNation.color||C.border} crest={homeNation.crest} size={10}/>
       </div>
+      {(aLU.bench.length>0||hLU.bench.length>0)&&(
+        <div style={{borderTop:'1px solid rgba(255,255,255,0.07)',marginTop:6,paddingTop:5,paddingLeft:8,paddingRight:8}}>
+          <div style={{fontSize:6,color:'rgba(255,255,255,0.2)',letterSpacing:2,textTransform:'uppercase',marginBottom:4}}>Bench</div>
+          <div style={{display:'flex',justifyContent:'space-between',gap:6}}>
+            <div style={{display:'flex',gap:4,flexWrap:'wrap',flex:1}}>
+              {aLU.bench.map(p=>(
+                <div key={p.id} style={{display:'flex',alignItems:'center',gap:3,background:awayNation.color+'1a',border:`1px solid ${awayNation.color}33`,borderRadius:4,padding:'2px 5px'}}>
+                  <span style={{fontSize:6.5,color:awayNation.color,fontWeight:700,opacity:0.8}}>{p.position[0]}</span>
+                  <span style={{fontSize:7.5,color:'rgba(255,255,255,0.45)'}}>{p.name.split(' ').pop()}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:4,flexWrap:'wrap',flex:1,justifyContent:'flex-end'}}>
+              {hLU.bench.map(p=>(
+                <div key={p.id} style={{display:'flex',alignItems:'center',gap:3,background:homeNation.color+'1a',border:`1px solid ${homeNation.color}33`,borderRadius:4,padding:'2px 5px'}}>
+                  <span style={{fontSize:7.5,color:'rgba(255,255,255,0.45)'}}>{p.name.split(' ').pop()}</span>
+                  <span style={{fontSize:6.5,color:homeNation.color,fontWeight:700,opacity:0.8}}>{p.position[0]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
