@@ -68,11 +68,19 @@ const wcAstW=(p,sid)=>{if(p.id===sid)return 0;const s=p._slot||p.position;return
 // For n≤7 outfield players and 5 slots, P(n,5)≤2520 per formation — fast enough.
 function pickWCLineup(nation){
   if(!nation)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
-  const ps=nation.players.filter(p=>p.name);
+  // Deduplicate by id first — a player added from BMLS keeps their original id,
+  // so double-adds (fast click) produce duplicate ids that break the bench filter.
+  const seen=new Set();
+  const ps=nation.players.filter(p=>p.name&&p.id!=null&&!seen.has(p.id)&&seen.add(p.id));
   if(!ps.length)return{formation:WC_FORMATIONS[0],gk:null,starters:[],bench:[]};
   let gk=ps.find(p=>p.position==='GK');
-  let out=ps.filter(p=>p.position!=='GK');
-  if(!gk&&out.length){const s=[...out].sort((a,b)=>(a.score||5)-(b.score||5));gk=s[0];out=out.filter(p=>p.id!==gk.id);}
+  // Exclude only the selected GK by id, NOT all GK-positioned players.
+  // A squad with two GKs would lose the backup entirely from the outfield pool
+  // if we filter by position — they'd never be considered for any slot.
+  let out;
+  if(gk){out=ps.filter(p=>p.id!==gk.id);}
+  else if(ps.length){const s=[...ps].sort((a,b)=>(a.score||5)-(b.score||5));gk=s[0];out=ps.filter(p=>p.id!==gk.id);}
+  else{out=[];}
 
   // How good is player p in a given slot type?
   const slotScore=(p,slot)=>{
@@ -356,7 +364,7 @@ function NationsManageView({nations,setNations,teams,onToast}){
   const flagRef=useRef();
   const allBmlsPlayers=(teams||[]).flatMap(t=>t.players.map(p=>({...p,club:t.name,clubColor:t.color})));
   const filtered=allBmlsPlayers.filter(p=>p.name&&p.name.toLowerCase().includes(search.toLowerCase()));
-  const saveNation=n=>{const nn=nations.map(x=>x.id===n.id?n:x);setNations(nn);syncNations(nn);};
+  const saveNation=n=>{const s=new Set();const d={...n,players:n.players.filter(p=>!s.has(p.id)&&s.add(p.id))};const nn=nations.map(x=>x.id===d.id?d:x);setNations(nn);syncNations(nn);};
   const sel={background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:'8px 10px',color:C.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",width:'100%',outline:'none'};
   if(editNation){
     const np=newPlayer||{name:'',position:'DEF',score:7,mdfAtkScore:7,mdfDefScore:7,age:25,club:''};
