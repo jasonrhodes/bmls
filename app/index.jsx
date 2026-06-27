@@ -1987,7 +1987,7 @@ function generateArticles(teams,fixtures,transfers,activeMW){
   const articles=[];
   const named=teams.filter(t=>t.name);
   if(named.length===0)return[];
-  const pick=(arr,seed)=>arr[Math.abs(seed)%arr.length];
+  const pick=(arr,seed)=>arr[Math.floor(Math.abs(seed))%arr.length];
   const prevMW=activeMW>1?activeMW-1:null;
   // stats scoped to games played before the active MW
   const playedSoFar=fixtures.filter(f=>f.played&&(f.matchWeek==null||f.matchWeek<activeMW));
@@ -2215,8 +2215,8 @@ function generateArticles(teams,fixtures,transfers,activeMW){
     ];
     articles.push({
       tag:isAmbition?'Big Move':'Rumour',color:isAmbition?C.purple:C.gold,
-      headline:headlines[Math.abs(seed)%headlines.length],
-      body:bodies[Math.abs(seed)%bodies.length],
+      headline:headlines[Math.floor(Math.abs(seed))%headlines.length],
+      body:bodies[Math.floor(Math.abs(seed))%bodies.length],
       date:'Transfer Window',priority:3,
     });
   });
