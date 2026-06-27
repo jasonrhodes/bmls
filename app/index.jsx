@@ -865,6 +865,7 @@ function TableTab({teams,fixtures}){
 function StatsTab({teams,fixtures}){
   const[cat,setCat]=useState("goals");
   const[mode,setMode]=useState("actual");
+  const playerCountry=useMemo(()=>{const m={};teams.forEach(t=>t.players.forEach(p=>{m[p.id]=p.country||"";}));return m;},[teams]);
   const playerStats=useMemo(()=>computePlayerStats(teams,fixtures),[teams,fixtures]);
   const playedCount=fixtures.filter(f=>f.played).length;
   const teamPlayed={};
@@ -949,7 +950,7 @@ function StatsTab({teams,fixtures}){
               <div style={{flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:5}}>
                   <div style={{fontSize:14,fontWeight:600,color:C.text}}>{p.name||"Unnamed"}</div>
-                  {p.country&&(nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:20,height:14,borderRadius:2,objectFit:"cover",flexShrink:0}} alt=""/>:<span style={{fontSize:11}}>{flagEmoji(p.country)}</span>)}
+                  {(()=>{const c=p.country||playerCountry[p.playerId]||"";return c&&(nationCrests[c]?<img src={nationCrests[c]} style={{width:20,height:14,borderRadius:2,objectFit:"cover",flexShrink:0}} alt=""/>:<span style={{fontSize:11}}>{flagEmoji(c)}</span>);})()}
                 </div>
                 <div style={{fontSize:11,color:C.muted}}>{p.teamName} · {p.position} · {p.apps} app{p.apps!==1?"s":""}</div>
               </div>
