@@ -332,12 +332,10 @@ function BettingTab({teams,fixtures,userData,onPlaceBet}){
   const[stakes,setStakes]=useState({});
   const[selectedMarket,setSelectedMarket]=useState({});
 
-  const upcoming=fixtures.filter(f=>!f.played&&f.homeId&&f.awayId);
-  const byMW={};
-  upcoming.forEach(f=>{const mw=f.matchWeek||0;if(!byMW[mw])byMW[mw]=[];byMW[mw].push(f);});
-  const mws=Object.keys(byMW).map(Number).sort((a,b)=>a-b);
+  const currentMW=activeMatchWeek(fixtures);
+  const upcoming=fixtures.filter(f=>!f.played&&f.homeId&&f.awayId&&f.matchWeek===currentMW);
 
-  if(!upcoming.length)return<div style={{padding:32,textAlign:"center",color:C.muted}}>No upcoming fixtures to bet on.</div>;
+  if(!upcoming.length)return<div style={{padding:32,textAlign:"center",color:C.muted,fontSize:13}}>No fixtures to bet on for Match Week {currentMW}.</div>;
 
   const groups=['Match Result','Goals','BTTS','Margin'];
 
@@ -347,10 +345,9 @@ function BettingTab({teams,fixtures,userData,onPlaceBet}){
         <div style={{fontSize:12,color:C.muted}}>Balance</div>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:C.gold}}>${userData.balance.toFixed(2)}</div>
       </div>
-      {mws.map(mw=>(
-        <div key={mw} style={{marginBottom:24}}>
-          {mw>0&&<SLabel>Match Week {mw}</SLabel>}
-          {byMW[mw].map(f=>{
+      <SLabel>Match Week {currentMW}</SLabel>
+      <div style={{marginBottom:24}}>
+          {upcoming.map(f=>{
             const h=teams.find(t=>t.id===f.homeId),a=teams.find(t=>t.id===f.awayId);
             if(!h||!a)return null;
             const isOpen=expanded===f.id;
@@ -436,7 +433,6 @@ function BettingTab({teams,fixtures,userData,onPlaceBet}){
             );
           })}
         </div>
-      ))}
     </div>
   );
 }
