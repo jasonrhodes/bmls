@@ -1277,6 +1277,24 @@ function generateRumors(teams,fixtures){
   const score=p=>p.position==='MDF'?(((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2):(p.score||5);
   const rumors=[];
   const usedTargets=new Set();
+  const usedOutgoing=new Set();
+
+  const buildRumor=(buyTeam,outgoing,candidates,seed1)=>{
+    if(!candidates.length)return null;
+    const{p:target,t:sellTeam}=candidates[Math.floor(sr(seed1)*candidates.length)];
+    if(usedTargets.has(target.id)||usedOutgoing.has(outgoing.id))return null;
+    usedTargets.add(target.id);
+    usedOutgoing.add(outgoing.id);
+    const targetVal=playerValue(target,sellTeam);
+    const outVal=playerValue(outgoing,buyTeam);
+    const gap=Math.max(0,targetVal-outVal);
+    const seed2=target.id*13+buyTeam.id*7;
+    const cashOffer=Math.max(5,Math.round(gap*(0.7+sr(seed2)*0.4)/5)*5);
+    const budget=buyTeam.budget||0;
+    return{buyTeam,sellTeam,target,outgoing,targetVal,outVal,cashOffer,canAfford:budget===0||cashOffer<=budget,totalOffer:outVal+cashOffer,seed:seed1,type:'upgrade'};
+  };
+
+  // Type 1 — weakness fix: swap out weakest starter for a better one
   named.forEach(buyTeam=>{
     const lineup=predictedLineup(buyTeam,fixtures);
     const starters=[lineup.gk,...lineup.defs,...lineup.mdfs,...lineup.fwds].filter(Boolean);
@@ -1293,19 +1311,29 @@ function generateRumors(teams,fixtures){
     if(!outCands.length)return;
     const outgoing=[...outCands].sort((a,b)=>score(a)-score(b))[0];
     const candidates=named.filter(t=>t.id!==buyTeam.id).flatMap(t=>t.players.filter(p=>p.name&&p.position===pos&&score(p)>score(outgoing)&&!usedTargets.has(p.id)).map(p=>({p,t})));
-    if(!candidates.length)return;
-    const seed1=buyTeam.id*17+outgoing.id;
-    const{p:target,t:sellTeam}=candidates[Math.floor(sr(seed1)*candidates.length)];
-    usedTargets.add(target.id);
-    const targetVal=playerValue(target,sellTeam);
-    const outVal=playerValue(outgoing,buyTeam);
-    const gap=Math.max(0,targetVal-outVal);
-    const seed2=target.id*13+buyTeam.id*7;
-    const cashOffer=Math.max(5,Math.round(gap*(0.7+sr(seed2)*0.4)/5)*5);
-    const budget=buyTeam.budget||0;
-    rumors.push({buyTeam,sellTeam,target,outgoing,targetVal,outVal,cashOffer,canAfford:budget===0||cashOffer<=budget,totalOffer:outVal+cashOffer,seed:seed1});
+    const r=buildRumor(buyTeam,outgoing,candidates,buyTeam.id*17+outgoing.id);
+    if(r)rumors.push(r);
   });
-  return rumors.slice(0,8);
+
+  // Type 2 — ambition swap: offer a good player to land an elite one (score 8+)
+  named.forEach(buyTeam=>{
+    const lineup=predictedLineup(buyTeam,fixtures);
+    const starters=[lineup.gk,...lineup.defs,...lineup.mdfs,...lineup.fwds].filter(Boolean);
+    // Pick a decent starter (score 7+) to use as bait — not the weakest
+    const baitCands=starters.filter(p=>score(p)>=7&&!usedOutgoing.has(p.id));
+    if(!baitCands.length)return;
+    const seed0=buyTeam.id*53;
+    const bait=baitCands[Math.floor(sr(seed0)*baitCands.length)];
+    // Target: elite player (score 8+) from another team, any position, significantly better
+    const eliteCands=named.filter(t=>t.id!==buyTeam.id).flatMap(t=>
+      t.players.filter(p=>p.name&&score(p)>=8&&score(p)>score(bait)+1&&!usedTargets.has(p.id)).map(p=>({p,t}))
+    );
+    const r=buildRumor(buyTeam,bait,eliteCands,buyTeam.id*41+bait.id);
+    if(r)rumors.push({...r,type:'ambition'});
+  });
+
+  // Shuffle and cap — interleave both types
+  return rumors.sort((a,b)=>sr(a.seed*3+b.seed)-0.5).slice(0,10);
 }
 
 function TransfersTab({transfers,teams,fixtures}){
@@ -1324,6 +1352,7 @@ function TransfersTab({transfers,teams,fixtures}){
         <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderLeft:`3px solid ${C.gold}`,borderRadius:10,padding:"14px 16px",marginBottom:10}}>
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
             <span style={{background:C.gold+'22',color:C.gold,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:700,letterSpacing:.5}}>RUMOUR</span>
+            {r.type==='ambition'&&<span style={{background:C.purple+'22',color:C.purple,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:700}}>AMBITION MOVE</span>}
             {!r.canAfford&&<span style={{background:C.red+'22',color:C.red,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:700}}>OVER BUDGET</span>}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8,marginBottom:10}}>
@@ -2112,22 +2141,33 @@ function generateArticles(teams,fixtures,transfers,activeMW){
 
   // transfer rumours
   const rumors=generateRumors(teams,fixtures);
-  rumors.slice(0,4).forEach(r=>{
+  rumors.slice(0,5).forEach(r=>{
     const seed=r.seed;
-    const headlines=[
+    const isAmbition=r.type==='ambition';
+    const headlines=isAmbition?[
+      `${r.buyTeam.name} willing to sacrifice ${r.outgoing.name} in stunning bid for ${r.target.name}`,
+      `${r.target.name} the dream target — ${r.buyTeam.name} ready to cash in on ${r.outgoing.name}`,
+      `Big move brewing: ${r.buyTeam.name} plot £${r.totalOffer}M raid on ${r.sellTeam.name}`,
+      `Will he leave? ${r.target.name} attracting serious interest from ${r.buyTeam.name}`,
+      `${r.outgoing.name} could be sacrificed as ${r.buyTeam.name} chase ${r.sellTeam.name} star`,
+    ]:[
       `Will ${r.target.name} leave ${r.sellTeam.name}? ${r.buyTeam.name} plotting audacious move`,
       `${r.buyTeam.name} eye ${r.target.name} as ${r.outgoing.name} exit grows more likely`,
       `On the move? ${r.target.name} linked with switch to ${r.buyTeam.name}`,
       `${r.buyTeam.name} ready to table £${r.totalOffer}M offer for ${r.sellTeam.name} star`,
       `${r.target.name} future uncertain as ${r.buyTeam.name} circle`,
     ];
-    const bodies=[
+    const bodies=isAmbition?[
+      `${r.buyTeam.name} are ready to go big in this window. Sources close to the club suggest ${r.outgoing.name} — valued at £${r.outVal}M — could be used as the centrepiece of a £${r.totalOffer}M offer for ${r.sellTeam.name}'s standout player ${r.target.name}. The cash top-up of £${r.cashOffer}M signals real intent.`,
+      `In what would be a statement of ambition, ${r.buyTeam.name} have identified ${r.target.name} of ${r.sellTeam.name} as their priority target. A swap involving ${r.outgoing.name} plus £${r.cashOffer}M cash has been floated internally. ${r.sellTeam.name} are under no pressure to sell but the total package of £${r.totalOffer}M may be hard to ignore.`,
+      `${r.target.name} has reportedly attracted a £${r.totalOffer}M offer from ${r.buyTeam.name}, structured as ${r.outgoing.name} plus £${r.cashOffer}M in cash. The move would represent a bold upgrade for ${r.buyTeam.name} and a significant payday for ${r.sellTeam.name} if they choose to listen.`,
+    ]:[
       `${r.buyTeam.name} are believed to be plotting a move for ${r.sellTeam.name} ${r.target.position} ${r.target.name}. Sources suggest a deal worth £${r.totalOffer}M — involving ${r.outgoing.name} plus £${r.cashOffer}M in cash — is being lined up. ${r.sellTeam.name} are yet to respond publicly but insiders say a bid is expected imminently.`,
       `${r.target.name} could be set for a new challenge after ${r.buyTeam.name} emerged as serious suitors. The proposed package of ${r.outgoing.name} and £${r.cashOffer}M cash totals £${r.totalOffer}M — a figure that may test ${r.sellTeam.name}'s resolve. Whether the player himself is keen remains to be seen.`,
       `Transfer speculation is mounting around ${r.target.name} of ${r.sellTeam.name}. ${r.buyTeam.name} are understood to have held internal discussions over a bid that would see ${r.outgoing.name} head in the opposite direction alongside £${r.cashOffer}M. The window is open and things could move quickly.`,
     ];
     articles.push({
-      tag:'Rumour',color:C.gold,
+      tag:isAmbition?'Big Move':'Rumour',color:isAmbition?C.purple:C.gold,
       headline:headlines[Math.abs(seed)%headlines.length],
       body:bodies[Math.abs(seed)%bodies.length],
       date:'Transfer Window',priority:3,
