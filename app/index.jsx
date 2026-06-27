@@ -1310,9 +1310,15 @@ function generateRumors(teams,fixtures){
 
 function TransfersTab({transfers,teams,fixtures}){
   const rumors=useMemo(()=>generateRumors(teams,fixtures),[teams,fixtures]);
+  const[view,setView]=useState("rumors");
   return(
     <div>
-      <SLabel>Transfer Rumours</SLabel>
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        {[{key:"rumors",label:"Rumours"},{key:"history",label:"History"}].map(v=>(
+          <button key={v.key} onClick={()=>setView(v.key)} style={{background:view===v.key?C.accent:C.card,color:view===v.key?C.white:C.sub,border:"none",borderRadius:6,padding:"8px 16px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{v.label}</button>
+        ))}
+      </div>
+      {view==="rumors"&&<><SLabel>Transfer Rumours</SLabel>
       {rumors.length===0&&<div style={{color:C.muted,fontSize:13,fontStyle:"italic",marginBottom:20}}>Not enough squad data to generate rumours.</div>}
       {rumors.map((r,i)=>(
         <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderLeft:`3px solid ${C.gold}`,borderRadius:10,padding:"14px 16px",marginBottom:10}}>
@@ -1345,38 +1351,38 @@ function TransfersTab({transfers,teams,fixtures}){
           </div>
         </div>
       ))}
-      {transfers.length>0&&<>
-      <SLabel style={{marginTop:8}}>Transfer History</SLabel>
-      {[...transfers].sort((a,b)=>b.date.localeCompare(a.date)).map(t=>{
-        const from=teams.find(x=>x.id===t.fromTeamId);
-        const to=teams.find(x=>x.id===t.toTeamId);
-        return(
-          <div key={t.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px",marginBottom:10}}>
-            <div style={{fontSize:10,color:C.muted,marginBottom:12,letterSpacing:1}}>{t.date||"Unknown date"}</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8}}>
-              <div>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                  <TeamBadge color={t.fromTeamColor} crest={from?.crest} size={18}/>
-                  <span style={{fontSize:10,color:C.muted,fontWeight:600}}>{t.fromTeamName}</span>
+      {view==="history"&&<>
+        <SLabel>Transfer History</SLabel>
+        {transfers.length===0&&<div style={{color:C.muted,fontSize:13,fontStyle:"italic"}}>No transfers yet. Go to Manage → Transfers to make a trade.</div>}
+        {[...transfers].sort((a,b)=>b.date.localeCompare(a.date)).map(t=>{
+          const from=teams.find(x=>x.id===t.fromTeamId);
+          const to=teams.find(x=>x.id===t.toTeamId);
+          return(
+            <div key={t.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px",marginBottom:10}}>
+              <div style={{fontSize:10,color:C.muted,marginBottom:12,letterSpacing:1}}>{t.date||"Unknown date"}</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:8}}>
+                <div>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                    <TeamBadge color={t.fromTeamColor} crest={from?.crest} size={18}/>
+                    <span style={{fontSize:10,color:C.muted,fontWeight:600}}>{t.fromTeamName}</span>
+                  </div>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.text,letterSpacing:.5}}>{t.playerOut.name}</div>
+                  <div style={{fontSize:10,color:posColor(t.playerOut.position),fontWeight:700,marginTop:2}}>{t.playerOut.position}</div>
                 </div>
-                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.text,letterSpacing:.5}}>{t.playerOut.name}</div>
-                <div style={{fontSize:10,color:posColor(t.playerOut.position),fontWeight:700,marginTop:2}}>{t.playerOut.position}</div>
-              </div>
-              <div style={{fontSize:20,color:C.muted,fontWeight:300}}>⇄</div>
-              <div style={{textAlign:"right"}}>
-                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,justifyContent:"flex-end"}}>
-                  <span style={{fontSize:10,color:C.muted,fontWeight:600}}>{t.toTeamName}</span>
-                  <TeamBadge color={t.toTeamColor} crest={to?.crest} size={18}/>
+                <div style={{fontSize:20,color:C.muted,fontWeight:300}}>⇄</div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,justifyContent:"flex-end"}}>
+                    <span style={{fontSize:10,color:C.muted,fontWeight:600}}>{t.toTeamName}</span>
+                    <TeamBadge color={t.toTeamColor} crest={to?.crest} size={18}/>
+                  </div>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.text,letterSpacing:.5}}>{t.playerIn.name}</div>
+                  <div style={{fontSize:10,color:posColor(t.playerIn.position),fontWeight:700,marginTop:2}}>{t.playerIn.position}</div>
                 </div>
-                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.text,letterSpacing:.5}}>{t.playerIn.name}</div>
-                <div style={{fontSize:10,color:posColor(t.playerIn.position),fontWeight:700,marginTop:2}}>{t.playerIn.position}</div>
               </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
       </>}
-      {transfers.length===0&&<div style={{color:C.muted,fontSize:13,fontStyle:"italic"}}>No transfers yet. Go to Manage → Transfers to make a trade.</div>}
     </div>
   );
 }
