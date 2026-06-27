@@ -599,6 +599,7 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
           {isCap&&<div style={{position:"absolute",top:-4,right:-4,width:14,height:14,borderRadius:"50%",background:"#F59E0B",fontSize:7,fontWeight:900,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,boxShadow:"0 1px 3px rgba(0,0,0,0.5)"}}>C</div>}
         </div>
         <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{(p.name||"?").trim().split(/\s+/).pop()||"?"}</span>
+        <span style={{fontSize:7,color:"rgba(255,255,255,0.55)",textAlign:"center",lineHeight:1.2,textShadow:"0 1px 2px rgba(0,0,0,0.8)",whiteSpace:"nowrap"}}>{p.age||25}{p.country?` · ${p.country}`:""}</span>
       </div>
     );
   };
@@ -638,6 +639,7 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
             <span style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.9)"}}>{p.position==="GK"?"GK":p.position}</span>
           </div>
           <span style={{fontSize:7,color:"rgba(255,255,255,0.6)",textAlign:"center",fontWeight:600,lineHeight:1.2,maxWidth:50,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(p.name||"?").trim().split(/\s+/).pop()}</span>
+          <span style={{fontSize:6,color:"rgba(255,255,255,0.35)",textAlign:"center",lineHeight:1.2,whiteSpace:"nowrap"}}>{p.age||25}{p.country?` · ${p.country}`:""}</span>
         </div>
       ))}
     </div>
