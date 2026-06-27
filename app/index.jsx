@@ -815,8 +815,18 @@ function FixturesTab({teams,fixtures,onPlayerClick,activeMatchWeek,onApplySim}){
                     const result=team.id===f.homeId?hResult:aResult;
                     return calcMatchRating(stat,player.position,result);
                   };
-                  const hl=predictedLineup(h,fixtures);
-                  const al=predictedLineup(a,fixtures);
+                  const buildLineupFromIds=(team,starterIds)=>{
+                    const starters=team.players.filter(p=>starterIds.includes(p.id));
+                    const bench=team.players.filter(p=>p.name&&!starterIds.includes(p.id));
+                    const gk=starters.find(p=>p.position==='GK')||null;
+                    const defs=starters.filter(p=>p.position==='DEF');
+                    const mdfs=starters.filter(p=>p.position==='MDF');
+                    const fwds=starters.filter(p=>p.position==='FWD');
+                    const label=`${defs.length}-${mdfs.length}-${fwds.length}`;
+                    return{gk,defs,mdfs,fwds,bench,formation:{label}};
+                  };
+                  const hl=f.homeStarterIds?.length?buildLineupFromIds(h,f.homeStarterIds):predictedLineup(h,fixtures);
+                  const al=f.awayStarterIds?.length?buildLineupFromIds(a,f.awayStarterIds):predictedLineup(a,fixtures);
                   const RatingDot=({p,team})=>{
                     const r=getRating(p,team);
                     const bg=r!=null?ratingColor(r):'#6b7280';
@@ -1826,6 +1836,43 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
                 </div>
               ))}
             </div>}
+            {editFix.played&&hTeam&&aTeam&&(()=>{
+              const toggleStarter=(teamKey,pid)=>{
+                const cur=editFix[teamKey]||[];
+                const next=cur.includes(pid)?cur.filter(x=>x!==pid):[...cur,pid];
+                setEditFix({...editFix,[teamKey]:next});
+              };
+              return(
+                <div style={{marginTop:20}}>
+                  <div style={{fontSize:10,fontWeight:700,letterSpacing:2,color:C.muted,textTransform:"uppercase",marginBottom:12}}>Starting Lineups</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                    {[[hTeam,"homeStarterIds"],[aTeam,"awayStarterIds"]].map(([team,key])=>{
+                      const starterIds=editFix[key]||[];
+                      const count=starterIds.length;
+                      return(
+                        <div key={team.id}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                            <TeamBadge color={team.color} crest={team.crest} size={16}/>
+                            <span style={{fontSize:12,fontWeight:700,color:C.text,flex:1}}>{team.name}</span>
+                            <span style={{fontSize:10,color:count===6?C.green:C.gold,fontWeight:700}}>{count}/6</span>
+                          </div>
+                          {team.players.filter(p=>p.name).map(p=>{
+                            const isStarter=starterIds.includes(p.id);
+                            return(
+                              <button key={p.id} onClick={()=>toggleStarter(key,p.id)} style={{display:"flex",alignItems:"center",gap:6,width:"100%",background:isStarter?team.color+'33':C.surface,border:`1px solid ${isStarter?team.color:C.border}`,borderRadius:6,padding:"6px 8px",marginBottom:4,cursor:"pointer",textAlign:"left"}}>
+                                <span style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
+                                <span style={{fontSize:12,color:isStarter?C.text:C.muted,fontWeight:isStarter?600:400,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                                {isStarter&&<span style={{fontSize:10,color:team.color,fontWeight:700}}>▶</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             <div style={{display:"flex",gap:8,marginTop:8}}>
               <Btn onClick={()=>saveFix(editFix)}>Save Fixture</Btn>
               <Btn onClick={()=>delFix(editFix.id)} variant="danger">Delete</Btn>
