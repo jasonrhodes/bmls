@@ -604,18 +604,18 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
     const isCap=(p.roles||[]).includes('captain');
     const isPen=(p.roles||[]).includes('penTaker');
     return(
-      <div onClick={()=>onPlayerClick&&onPlayerClick({player:p,team})} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,width:54,cursor:onPlayerClick?"pointer":"default",position:"relative"}}>
-        <div style={{position:"relative",width:34,height:34}}>
-          <div style={{width:34,height:34,borderRadius:"50%",background:color,border:"2.5px solid rgba(255,255,255,0.9)",boxShadow:"0 2px 8px rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.95)",letterSpacing:.5,textShadow:"0 1px 2px rgba(0,0,0,0.4)"}}>{p.position==="GK"?"GK":p.position}</span>
+      <div onClick={()=>onPlayerClick&&onPlayerClick({player:p,team})} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,width:76,cursor:onPlayerClick?"pointer":"default",position:"relative"}}>
+        <div style={{display:"flex",alignItems:"center",gap:5}}>
+          <div style={{position:"relative",width:34,height:34,flexShrink:0}}>
+            <div style={{width:34,height:34,borderRadius:"50%",background:color,border:"2.5px solid rgba(255,255,255,0.9)",boxShadow:"0 2px 8px rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.95)",letterSpacing:.5,textShadow:"0 1px 2px rgba(0,0,0,0.4)"}}>{p.position==="GK"?"GK":p.position}</span>
+            </div>
+            {isCap&&<div style={{position:"absolute",top:-4,right:-4,width:14,height:14,borderRadius:"50%",background:"#F59E0B",fontSize:7,fontWeight:900,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,boxShadow:"0 1px 3px rgba(0,0,0,0.5)"}}>C</div>}
           </div>
-          {isCap&&<div style={{position:"absolute",top:-4,right:-4,width:14,height:14,borderRadius:"50%",background:"#F59E0B",fontSize:7,fontWeight:900,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,boxShadow:"0 1px 3px rgba(0,0,0,0.5)"}}>C</div>}
+          {nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:32,height:22,borderRadius:3,objectFit:"cover",flexShrink:0,boxShadow:"0 1px 4px rgba(0,0,0,0.5)"}} alt=""/>:p.country?<span style={{fontSize:14}}>{flagEmoji(p.country)}</span>:null}
         </div>
-        <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{(p.name||"?").trim().split(/\s+/).pop()||"?"}</span>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
-          <span style={{fontSize:7,color:"rgba(255,255,255,0.55)",lineHeight:1.2,textShadow:"0 1px 2px rgba(0,0,0,0.8)"}}>{p.age||25}</span>
-          {nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:18,height:18,borderRadius:3,objectFit:"cover",flexShrink:0}} alt=""/>:p.country?<span style={{fontSize:10,color:"rgba(255,255,255,0.55)"}}>{flagEmoji(p.country)}</span>:null}
-        </div>
+        <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:76,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{(p.name||"?").trim().split(/\s+/).pop()||"?"}</span>
+        <span style={{fontSize:7,color:"rgba(255,255,255,0.55)",lineHeight:1.2,textShadow:"0 1px 2px rgba(0,0,0,0.8)"}}>{p.age||25}</span>
       </div>
     );
   };
