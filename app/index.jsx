@@ -1222,6 +1222,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
   const[view,setView]=useState("teams");
   const[editTeam,setEditTeam]=useState(null);
   const[editFix,setEditFix]=useState(null);
+  const[dismissed,setDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem('bmls_form_dismissed')||'[]');}catch{return[];}});
   const[tradeTeamA,setTradeTeamA]=useState(null);
   const[tradeTeamB,setTradeTeamB]=useState(null);
   const[tradePlayerA,setTradePlayerA]=useState(null);
@@ -1287,7 +1288,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
   return(
     <div>
       <div style={{display:"flex",gap:8,marginBottom:24}}>
-        {["teams","countries","fixtures","transfers","season"].map(v=>(
+        {["teams","countries","form","fixtures","transfers","season"].map(v=>(
           <button key={v} onClick={()=>{setView(v);setEditTeam(null);setEditFix(null);}} style={{background:view===v?C.accent:C.card,color:view===v?C.white:C.sub,border:"none",borderRadius:6,padding:"8px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",textTransform:"capitalize"}}>{v}</button>
         ))}
       </div>
@@ -1392,6 +1393,81 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
           </div>
         </div>
       )}
+      {view==="form"&&(()=>{
+        const stats=computePlayerStats(teams,fixtures);
+        const teamGames={};
+        fixtures.filter(f=>f.played).forEach(f=>{teamGames[f.homeId]=(teamGames[f.homeId]||0)+1;teamGames[f.awayId]=(teamGames[f.awayId]||0)+1;});
+        const suggestions=[];
+        teams.forEach(t=>t.players.filter(p=>p.name&&p.position!=='GK').forEach(p=>{
+          const gp=teamGames[t.id]||0;
+          if(gp<2)return;
+          const sc=(p.score||5)/10,atk=(p.mdfAtkScore||p.score||5)/10;
+          const pos=p.position;
+          const expG=pos==='FWD'?sc*sc*1.45*gp:pos==='MDF'?atk*atk*0.55*gp:0;
+          const expA=pos==='FWD'?(0.06+sc*0.16)*gp:pos==='MDF'?(0.15+atk*0.38)*gp:0;
+          const expTotal=expG+expA;
+          const ps=stats.find(s=>s.playerId===p.id)||{goals:0,assists:0};
+          const actual=ps.goals+ps.assists;
+          const key=`${p.id}:${p.score}:${p.mdfAtkScore||''}`;
+          if(dismissed.includes(key))return;
+          if(expTotal>0.5&&actual>=expTotal*2.0&&(p.score||5)<10){
+            suggestions.push({player:p,team:t,dir:1,actual,expected:expTotal,gp,key,ps});
+          } else if(gp>=3&&expTotal>0.5&&actual<=expTotal*0.25&&(p.score||5)>1){
+            suggestions.push({player:p,team:t,dir:-1,actual,expected:expTotal,gp,key,ps});
+          }
+        }));
+        const applyChange=(p,t,dir)=>{
+          const nt=teams.map(tm=>tm.id!==t.id?tm:{...tm,players:tm.players.map(pl=>{
+            if(pl.id!==p.id)return pl;
+            const newScore=Math.min(10,Math.max(1,+(((pl.score||5)+dir*0.5).toFixed(1))));
+            const newAtk=pl.position==='MDF'?Math.min(10,Math.max(1,+(((pl.mdfAtkScore||pl.score||5)+dir*0.5).toFixed(1)))):pl.mdfAtkScore;
+            return{...pl,score:newScore,mdfAtkScore:newAtk};
+          })});
+          setTeams(nt);syncTeams(nt);
+        };
+        const dismiss=key=>{
+          const nd=[...dismissed,key];
+          setDismissed(nd);
+          try{localStorage.setItem('bmls_form_dismissed',JSON.stringify(nd));}catch{}
+        };
+        const playedCount=fixtures.filter(f=>f.played).length;
+        return(
+          <div>
+            <SLabel>Form Review</SLabel>
+            {playedCount<2&&<div style={{color:C.muted,fontSize:13,fontStyle:"italic"}}>Need at least 2 matchweeks of data before suggestions appear.</div>}
+            {playedCount>=2&&suggestions.length===0&&<div style={{color:C.green,fontSize:13}}>✓ No upgrades or downgrades to suggest right now.</div>}
+            {suggestions.map(({player:p,team:t,dir,actual,expected,gp,key,ps})=>{
+              const isUp=dir>0;
+              const color=isUp?C.green:C.red;
+              const curScore=p.score||5;
+              const newScore=+(curScore+dir*0.5).toFixed(1);
+              return(
+                <div key={key} style={{background:C.card,border:`1px solid ${color}44`,borderRadius:10,padding:"14px 16px",marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                    <div style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:"2px 7px",fontSize:10,fontWeight:700,flexShrink:0}}>{p.position}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:700,color:C.text}}>{p.name}</div>
+                      <div style={{fontSize:11,color:C.muted}}>{t.name} · {gp} games played</div>
+                    </div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:C.muted,lineHeight:1}}>{curScore} <span style={{color,fontSize:18}}>{isUp?"↑":"↓"}</span> {newScore}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{isUp?"Overperforming":"Underperforming"}</div>
+                    </div>
+                  </div>
+                  <div style={{fontSize:11,color:C.muted,marginBottom:10}}>
+                    {ps.goals}G {ps.assists}A actual · {Math.round(expected*10)/10} expected over {gp} games
+                  </div>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={()=>{applyChange(p,t,dir);dismiss(key);}} style={{flex:1,background:color,color:"#fff",border:"none",borderRadius:7,padding:"9px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{isUp?"Upgrade +0.5":"Downgrade −0.5"}</button>
+                    <button onClick={()=>dismiss(key)} style={{background:C.surface,color:C.muted,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Dismiss</button>
+                  </div>
+                </div>
+              );
+            })}
+            {dismissed.length>0&&<button onClick={()=>{setDismissed([]);try{localStorage.removeItem('bmls_form_dismissed');}catch{}}} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",marginTop:8,fontFamily:"'DM Sans',sans-serif"}}>Reset dismissed suggestions</button>}
+          </div>
+        );
+      })()}
       {view==="countries"&&(()=>{
         const allPlayers=teams.flatMap(t=>t.players.filter(p=>p.name).map(p=>({...p,_teamId:t.id,_teamName:t.name,_teamColor:t.color})));
         const missing=allPlayers.filter(p=>!p.country);
