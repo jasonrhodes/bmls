@@ -103,7 +103,7 @@ function checkBetResult(bet,fixture){
 
 const DEFAULT_SETTINGS={
   fantasyBudget:45,
-  points:{goal:6,assist:3,appearance:1,gkCleanSheet:4,ratingHigh:2,ratingLow:-1,yellow:-1,red:-3,mwTopBonus:2},
+  points:{goal:6,assist:3,appearance:1,gkCleanSheet:4,penSave:5,ratingHigh:2,ratingLow:-1,yellow:-1,red:-3,mwTopBonus:2},
   playerCosts:{},
 };
 
@@ -151,6 +151,7 @@ function calcFantasyPoints(fantasyPlayerIds,teams,fixtures,settings=DEFAULT_SETT
         const rating=calcMatchRating(ps,player.position,result);
         score+=(ps.goals||0)*pts.goal+(ps.assists||0)*pts.assist;
         if((player.position==='GK'||player.position==='DEF')&&((isHome&&f.awayScore===0)||(isAway&&f.homeScore===0)))score+=pts.gkCleanSheet;
+        if(player.position==='GK'&&ps.penSaves)score+=ps.penSaves*(pts.penSave??5);
         if(ps.yellowCards)score+=ps.yellowCards*pts.yellow;
         if(ps.redCard)score+=pts.red;
         if(rating>=8)score+=pts.ratingHigh;else if(rating<=4)score+=pts.ratingLow;
@@ -714,6 +715,7 @@ function ManageTab({teams,settings,onSaveSettings}){
         <PtRow label="Assist" field="assist"/>
         <PtRow label="Appearance" field="appearance"/>
         <PtRow label="Clean Sheet (GK & DEF)" field="gkCleanSheet"/>
+        <PtRow label="Penalty Save (GK)" field="penSave"/>
         <PtRow label="Top 5 Rated (matchweek)" field="mwTopBonus"/>
         <PtRow label="Rating 8+ bonus" field="ratingHigh"/>
         <PtRow label="Rating ≤4 penalty" field="ratingLow"/>

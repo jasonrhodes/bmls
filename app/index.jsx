@@ -1491,7 +1491,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
     const hTeam=teams.find(t=>t.id===f.homeId),aTeam=teams.find(t=>t.id===f.awayId);
     const allP=[...(hTeam?.players||[]).map(p=>({...p,teamId:hTeam.id})),...(aTeam?.players||[]).map(p=>({...p,teamId:aTeam.id}))];
     const ex=f.playerStats||[];
-    return allP.map(p=>{const e=ex.find(ps=>ps.playerId===p.id);return e?e:{playerId:p.id,teamId:p.teamId,goals:0,penGoals:0,assists:0,yellowCards:0,redCard:false,cleanSheet:false,tackles:0,saves:0};});
+    return allP.map(p=>{const e=ex.find(ps=>ps.playerId===p.id);return e?e:{playerId:p.id,teamId:p.teamId,goals:0,penGoals:0,assists:0,yellowCards:0,redCard:false,cleanSheet:false,tackles:0,saves:0,penSaves:0};});
   };
   const updFixStat=(f,pid,field,val)=>setEditFix({...f,playerStats:f.playerStats.map(ps=>ps.playerId===pid?{...ps,[field]:val}:ps)});
   const openFix=f=>setEditFix({...f,playerStats:initFixStats(f,teams)});
@@ -1827,6 +1827,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
                           <button onClick={()=>updFixStat(editFix,playerId,"redCard",!ps.redCard)} style={{width:34,height:34,borderRadius:5,border:`1px solid ${ps.redCard?C.red:C.border}`,background:ps.redCard?`${C.red}33`:"transparent",color:ps.redCard?C.red:C.muted,cursor:"pointer",fontSize:16}}>🟥</button>
                         </div>
                         {player.position==="GK"&&<NumStepper label="Saves" value={ps.saves||0} onChange={v=>updFixStat(editFix,playerId,"saves",v)} color={C.purple}/>}
+                        {player.position==="GK"&&<NumStepper label="Pen Saves" value={ps.penSaves||0} onChange={v=>updFixStat(editFix,playerId,"penSaves",v)} color={C.green}/>}
                         {player.position==="GK"&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
                           <div style={{fontSize:9,color:C.muted,letterSpacing:1,textTransform:"uppercase"}}>Clean Sheet</div>
                           <button onClick={()=>updFixStat(editFix,playerId,"cleanSheet",!ps.cleanSheet)} style={{width:34,height:34,borderRadius:5,border:`1px solid ${ps.cleanSheet?C.green:C.border}`,background:ps.cleanSheet?`${C.green}33`:"transparent",color:ps.cleanSheet?C.green:C.muted,cursor:"pointer",fontSize:16}}>🧤</button>
