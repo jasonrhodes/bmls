@@ -138,7 +138,7 @@ function calcFantasyPoints(fantasyPlayerIds,teams,fixtures,settings=DEFAULT_SETT
         const result=isHome?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');
         const rating=calcMatchRating(ps,player.position,result);
         score+=(ps.goals||0)*pts.goal+(ps.assists||0)*pts.assist;
-        if(player.position==='GK'&&((isHome&&f.awayScore===0)||(isAway&&f.homeScore===0)))score+=pts.gkCleanSheet;
+        if((player.position==='GK'||player.position==='DEF')&&((isHome&&f.awayScore===0)||(isAway&&f.homeScore===0)))score+=pts.gkCleanSheet;
         if(ps.yellowCards)score+=ps.yellowCards*pts.yellow;
         if(ps.redCard)score+=pts.red;
         if(rating>=8)score+=pts.ratingHigh;else if(rating<=4)score+=pts.ratingLow;
@@ -700,7 +700,7 @@ function ManageTab({teams,settings,onSaveSettings}){
         <PtRow label="Goal" field="goal"/>
         <PtRow label="Assist" field="assist"/>
         <PtRow label="Appearance" field="appearance"/>
-        <PtRow label="GK Clean Sheet" field="gkCleanSheet"/>
+        <PtRow label="Clean Sheet (GK & DEF)" field="gkCleanSheet"/>
         <PtRow label="Rating 8+ bonus" field="ratingHigh"/>
         <PtRow label="Rating ≤4 penalty" field="ratingLow"/>
         <PtRow label="Yellow card" field="yellow"/>
