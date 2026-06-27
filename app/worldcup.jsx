@@ -190,6 +190,20 @@ function buildWCCareerLineup(nation,savedLineup){
   return{formation:best?.formation||WC_FORMATIONS[0],gk,starters:best?.starters||[],bench};
 }
 
+function accumulateWCStats(existing,events,myTeam){
+  const stats={...existing};
+  events.filter(e=>e.team===myTeam&&e.type==='goal').forEach(e=>{
+    const id=e.player.id;
+    if(!stats[id])stats[id]={name:e.player.name,position:e.player._slot||e.player.position||'',goals:0,assists:0};
+    stats[id].goals++;
+    if(e.assist){
+      const aid=e.assist.id;
+      if(!stats[aid])stats[aid]={name:e.assist.name,position:e.assist._slot||e.assist.position||'',goals:0,assists:0};
+      stats[aid].assists++;
+    }
+  });
+  return stats;
+}
 function simWCMatch(home,away){
   const hr=lineupRatings(home),ar=lineupRatings(away);
   const hxg=Math.max(0.1,hr.atk*0.14+(10-ar.def)*0.09+0.25);
@@ -1426,8 +1440,10 @@ function CareerTab({nations,wcMeta,groupMatches}){
   const applyGroupSim=()=>{
     if(!careerSim||careerSim.type!=='group')return;
     const{matchId,result,pendingUpdates}=careerSim;
+    const myTeam=careerSim.hNation.id===career.nationId?'home':'away';
     const updates={...pendingUpdates,[matchId]:{homeScore:result.hGoals,awayScore:result.aGoals}};
-    saveCareer({...career,results:{...careerResults,...updates}});
+    const newStats=accumulateWCStats(career.stats||{},result.events,myTeam);
+    saveCareer({...career,results:{...careerResults,...updates},stats:newStats});
     setCareerSim(null);
   };
   // Knockout phase
@@ -1475,9 +1491,13 @@ function CareerTab({nations,wcMeta,groupMatches}){
     const phaseOrder=['qf','sf','final'];
     const nextPhase=myWon?phaseOrder[phaseOrder.indexOf(koPhase)+1]||'champion':'eliminated';
     const nextOpp=myWon&&nextPhase!=='champion'?named.filter(n=>n.id!==career.nationId)[Math.floor(Math.random()*named.filter(n=>n.id!==career.nationId).length)]?.id||null:null;
-    saveKo(koPhase,{homeScore:res.hGoals,awayScore:res.aGoals,simmed:true,et:res.et||false},nextOpp,nextPhase);
-    setCareerSim(null);
-    setKoHi('');setKoAi('');
+    const myTeam=isHome?'home':'away';
+    const newStats=accumulateWCStats(career.stats||{},res.events,myTeam);
+    const kr={...koResults,[koPhase]:{homeScore:res.hGoals,awayScore:res.aGoals,simmed:true,et:res.et||false}};
+    const nextIH=nextOpp?Math.random()<0.5:null;
+    setKoResults(kr);setKoOpponent(nextOpp||null);setKoPhase(nextPhase);setKoIsHome(nextIH);
+    saveCareer({...career,koPhase:nextPhase,koResults:kr,koOpponent:nextOpp||null,koIsHome:nextIH,stats:newStats});
+    setCareerSim(null);setKoHi('');setKoAi('');
   };
   const champNation=koResults.final&&(koResults.final.homeScore>koResults.final.awayScore?myNation:nations.find(n=>n.id===koOpponent));
   return(
@@ -1658,6 +1678,35 @@ function CareerTab({nations,wcMeta,groupMatches}){
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:C.white,letterSpacing:2}}>{myNation.name}</div>
           </div>
           <Btn onClick={resetCareer} variant="secondary" style={{marginTop:20}}>Play Again</Btn>
+        </div>
+      )}
+      {career.stats&&Object.keys(career.stats).length>0&&(
+        <div style={{marginBottom:20}}>
+          <SLabel>Tournament Stats</SLabel>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'10px 12px'}}>
+              <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:2,marginBottom:8}}>⚽ TOP SCORERS</div>
+              {Object.values(career.stats).filter(p=>p.goals>0).sort((a,b)=>b.goals-a.goals).slice(0,5).map((p,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
+                  <span style={{fontSize:10,color:C.muted,minWidth:14}}>{i+1}</span>
+                  <div style={{flex:1}}><div style={{fontSize:12,color:C.text,fontWeight:600,lineHeight:1.2}}>{p.name}</div><div style={{fontSize:9,color:C.muted}}>{p.position}</div></div>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:C.gold,lineHeight:1}}>{p.goals}</span>
+                </div>
+              ))}
+              {Object.values(career.stats).filter(p=>p.goals>0).length===0&&<div style={{fontSize:11,color:C.muted}}>No goals yet</div>}
+            </div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'10px 12px'}}>
+              <div style={{fontSize:10,color:C.green,fontWeight:700,letterSpacing:2,marginBottom:8}}>🎯 TOP ASSISTS</div>
+              {Object.values(career.stats).filter(p=>p.assists>0).sort((a,b)=>b.assists-a.assists).slice(0,5).map((p,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
+                  <span style={{fontSize:10,color:C.muted,minWidth:14}}>{i+1}</span>
+                  <div style={{flex:1}}><div style={{fontSize:12,color:C.text,fontWeight:600,lineHeight:1.2}}>{p.name}</div><div style={{fontSize:9,color:C.muted}}>{p.position}</div></div>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:C.green,lineHeight:1}}>{p.assists}</span>
+                </div>
+              ))}
+              {Object.values(career.stats).filter(p=>p.assists>0).length===0&&<div style={{fontSize:11,color:C.muted}}>No assists yet</div>}
+            </div>
+          </div>
         </div>
       )}
       {(eliminated||(qualified&&koPhase==='eliminated'))&&(

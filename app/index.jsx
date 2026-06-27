@@ -370,9 +370,9 @@ function MatchSimPanel({fixture,home,away,fixtures,sim,onSimulate,onApply}){
 function calcOdds(home,away){
   const{hxg,axg}=predictMatch(home,away);
   const diff=hxg-axg;
-  const pH=Math.min(0.88,Math.max(0.08,0.5+diff*0.17));
-  const pA=Math.min(0.88,Math.max(0.08,0.5-diff*0.17));
-  const pD=Math.max(0.04,1-pH-pA);
+  const pH=Math.min(0.92,Math.max(0.05,0.5+diff*0.32));
+  const pA=Math.min(0.92,Math.max(0.05,0.5-diff*0.32));
+  const pD=Math.max(0.04,0.30-Math.abs(diff)*0.10);
   const n=pH+pD+pA,mg=1.07;
   return{home:+((mg/(pH/n))).toFixed(2),draw:+((mg/(pD/n))).toFixed(2),away:+((mg/(pA/n))).toFixed(2),pHome:Math.round(pH/n*100),pDraw:Math.round(pD/n*100),pAway:Math.round(pA/n*100)};
 }
@@ -820,11 +820,26 @@ function TableTab({teams,fixtures}){
 
 function StatsTab({teams,fixtures}){
   const[cat,setCat]=useState("goals");
+  const[mode,setMode]=useState("actual");
   const playerStats=useMemo(()=>computePlayerStats(teams,fixtures),[teams,fixtures]);
   const playedCount=fixtures.filter(f=>f.played).length;
   if(playedCount===0)return<Empty icon="📊" msg="No results yet." hint="Mark fixtures as played and add player stats."/>;
+  const n=teams.filter(t=>t.name).length;
+  const gamesPerTeam=Math.max(1,(n-1)*2);
+  const teamPlayed={};
+  fixtures.filter(f=>f.played).forEach(f=>{teamPlayed[f.homeId]=(teamPlayed[f.homeId]||0)+1;teamPlayed[f.awayId]=(teamPlayed[f.awayId]||0)+1;});
+  const projectedStats=playerStats.map(p=>{
+    const tp=teamPlayed[p.teamId]||0;
+    const rem=Math.max(0,gamesPerTeam-tp);
+    const appRate=tp>0?Math.min(1,p.apps/tp):0.8;
+    const goalRate=p.apps>0?p.goals/p.apps:0;
+    const astRate=p.apps>0?p.assists/p.apps:0;
+    return{...p,goals:p.goals+Math.round(goalRate*rem*appRate),assists:p.assists+Math.round(astRate*rem*appRate)};
+  });
+  const activeStats=mode==="projected"?projectedStats:playerStats;
+  const projCats=["goals","assists"];
   const cats=[{key:"goals",label:"⚽ Goals",color:C.gold},{key:"assists",label:"🎯 Assists",color:C.green},{key:"avgRating",label:"⭐ Rating",color:C.purple},{key:"cleanSheets",label:"🧤 Clean Sheets",color:C.accent},{key:"yellowCards",label:"🟨 Yellows",color:C.gold},{key:"redCard",label:"🟥 Reds",color:C.red}];
-  const sorted=key=>[...playerStats].filter(p=>{
+  const sorted=key=>[...activeStats].filter(p=>{
     if(key==="goals"||key==="assists"||key==="yellowCards"||key==="cleanSheets")return(p[key]||0)>0;
     if(key==="redCard")return p.redCard;
     if(key==="avgRating")return p.avgRating!==null;
@@ -842,12 +857,16 @@ function StatsTab({teams,fixtures}){
   const mv=maxVal(cat,list);
   return(
     <div>
+      <div style={{display:"flex",gap:6,marginBottom:14}}>
+        {["actual","projected"].map(m=><button key={m} onClick={()=>{setMode(m);if(m==="projected"&&!projCats.includes(cat))setCat("goals");}} style={{background:mode===m?C.accent:C.surface,color:mode===m?C.white:C.muted,border:`1px solid ${mode===m?C.accent:C.border}`,borderRadius:6,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{m==="actual"?"Season Stats":"Projected"}</button>)}
+        {mode==="projected"&&<span style={{fontSize:11,color:C.muted,alignSelf:"center",marginLeft:4}}>End-of-season estimate · {gamesPerTeam} game season</span>}
+      </div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:20}}>
-        {cats.map(c=><button key={c.key} onClick={()=>setCat(c.key)} style={{background:cat===c.key?C.card:C.surface,color:cat===c.key?C.white:C.muted,border:`1px solid ${cat===c.key?C.accent:C.border}`,borderRadius:20,padding:"5px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}}>{c.label}</button>)}
+        {(mode==="projected"?cats.filter(c=>projCats.includes(c.key)):cats).map(c=><button key={c.key} onClick={()=>setCat(c.key)} style={{background:cat===c.key?C.card:C.surface,color:cat===c.key?C.white:C.muted,border:`1px solid ${cat===c.key?C.accent:C.border}`,borderRadius:20,padding:"5px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",whiteSpace:"nowrap"}}>{c.label}</button>)}
       </div>
       <div style={{marginBottom:16}}>
-        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:C.white,letterSpacing:1}}>{current.label}</div>
-        <div style={{fontSize:11,color:C.muted}}>{playedCount} match{playedCount!==1?"es":""} · {list.length} player{list.length!==1?"s":""}</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:C.white,letterSpacing:1}}>{current.label}{mode==="projected"&&<span style={{fontSize:13,color:C.muted,letterSpacing:0,marginLeft:8,fontFamily:"'DM Sans',sans-serif",fontWeight:400}}>Projected</span>}</div>
+        <div style={{fontSize:11,color:C.muted}}>{playedCount} match{playedCount!==1?"es":""} · {list.length} player{list.length!==1?"s":""}{mode==="projected"&&` · based on current rate`}</div>
       </div>
       {list.length===0&&<div style={{color:C.muted,fontSize:13,fontStyle:"italic"}}>None recorded yet.</div>}
       {list.map((p,i)=>{
