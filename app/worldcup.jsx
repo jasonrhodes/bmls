@@ -142,7 +142,9 @@ function lineupRatingsFromSlots(starters){
 function buildWCCareerLineup(nation,savedLineup){
   if(!savedLineup||!savedLineup.length)return pickWCLineup(nation);
   const seen=new Set();
-  const ps=nation.players.filter(p=>p.name&&p.name.trim()&&p.id!=null&&!seen.has(p.id)&&seen.add(p.id)).map(p=>({...p,name:p.name.trim(),position:(p.position||'').trim()}));
+  const ps=nation.players
+    .filter(p=>p.name&&p.name.trim()&&p.id!=null&&!seen.has(p.id)&&seen.add(p.id))
+    .map(p=>({...p,name:p.name.trim(),position:(p.position||'').trim()}));
   const savedSet=new Set(savedLineup);
   const chosen=ps.filter(p=>savedSet.has(p.id));
   const bench=ps.filter(p=>!savedSet.has(p.id));
@@ -154,15 +156,37 @@ function buildWCCareerLineup(nation,savedLineup){
     if(slot==='MDF')return p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:p.position==='FWD'?(p.score||5)*0.55:p.position==='DEF'?(p.score||5)*0.35:(p.score||5)*0.2;
     return p.position==='FWD'?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.8:p.position==='MDF'?(p.mdfAtkScore||5)*0.65:(p.score||5)*0.2;
   };
-  const makeSlots=f=>{const s=[];for(let i=0;i<f.def;i++)s.push('DEF');for(let i=0;i<f.mdf;i++)s.push('MDF');for(let i=0;i<f.fwd;i++)s.push('FWD');return s;};
+  const makeSlots=f=>{
+    const s=[];
+    for(let i=0;i<f.def;i++)s.push('DEF');
+    for(let i=0;i<f.mdf;i++)s.push('MDF');
+    for(let i=0;i<f.fwd;i++)s.push('FWD');
+    return s;
+  };
   const bestAssign=(players,slots)=>{
-    const n=Math.min(players.length,slots.length);if(!n)return{score:0,picks:[]};
-    const used=new Array(players.length).fill(false);let bestScore=-Infinity,bestPicks=null;const cur=[];
-    const go=(si,score)=>{if(si===n){if(score>bestScore){bestScore=score;bestPicks=[...cur];}return;}for(let pi=0;pi<players.length;pi++){if(!used[pi]){used[pi]=true;cur.push(pi);go(si+1,score+slotScore(players[pi],slots[si]));used[pi]=false;cur.pop();}}};
-    go(0,0);return{score:bestScore,picks:bestPicks||[]};
+    const n=Math.min(players.length,slots.length);
+    if(!n)return{score:0,picks:[]};
+    const used=new Array(players.length).fill(false);
+    let bestScore=-Infinity,bestPicks=null;
+    const cur=[];
+    const go=(si,score)=>{
+      if(si===n){if(score>bestScore){bestScore=score;bestPicks=[...cur];}return;}
+      for(let pi=0;pi<players.length;pi++){
+        if(!used[pi]){used[pi]=true;cur.push(pi);go(si+1,score+slotScore(players[pi],slots[si]));used[pi]=false;cur.pop();}
+      }
+    };
+    go(0,0);
+    return{score:bestScore,picks:bestPicks||[]};
   };
   let best=null;
-  for(const f of WC_FORMATIONS){const slots=makeSlots(f);const{score,picks}=bestAssign(out,slots);const total=score+(f.bias||0);if(!best||total>best.total)best={total,formation:f,starters:picks.map((pi,si)=>({...out[pi],_slot:slots[si]}));};}
+  for(const f of WC_FORMATIONS){
+    const slots=makeSlots(f);
+    const{score,picks}=bestAssign(out,slots);
+    const total=score+(f.bias||0);
+    if(!best||total>best.total){
+      best={total,formation:f,starters:picks.map((pi,si)=>({...out[pi],_slot:slots[si]}))};
+    }
+  }
   return{formation:best?.formation||WC_FORMATIONS[0],gk,starters:best?.starters||[],bench};
 }
 
