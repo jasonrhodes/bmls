@@ -73,6 +73,18 @@ async function loadState(){
   }catch{return null;}
 }
 async function syncMeta(amw){try{await fetch('/api/fixture/season_meta',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:'season_meta',type:'meta',activeMatchWeek:amw})});}catch(e){console.error('sync meta:',e);}}
+function flagEmoji(country){
+  if(!country)return'';
+  const map={'Afghanistan':'AF','Albania':'AL','Algeria':'DZ','Angola':'AO','Argentina':'AR','Armenia':'AM','Australia':'AU','Austria':'AT','Azerbaijan':'AZ','Bahrain':'BH','Bangladesh':'BD','Belgium':'BE','Bolivia':'BO','Bosnia':'BA','Bosnia and Herzegovina':'BA','Brazil':'BR','Bulgaria':'BG','Cameroon':'CM','Canada':'CA','Chile':'CL','China':'CN','Colombia':'CO','Costa Rica':'CR','Croatia':'HR','Cuba':'CU','Cyprus':'CY','Czech Republic':'CZ','Czechia':'CZ','Denmark':'DK','DR Congo':'CD','Ecuador':'EC','Egypt':'EG','El Salvador':'SV','Estonia':'EE','Finland':'FI','France':'FR','Gabon':'GA','Georgia':'GE','Germany':'DE','Ghana':'GH','Greece':'GR','Guatemala':'GT','Guinea':'GN','Honduras':'HN','Hungary':'HU','Iceland':'IS','India':'IN','Indonesia':'ID','Iran':'IR','Iraq':'IQ','Ireland':'IE','Israel':'IL','Italy':'IT','Ivory Coast':'CI',"Côte d'Ivoire":'CI','Jamaica':'JM','Japan':'JP','Jordan':'JO','Kazakhstan':'KZ','Kenya':'KE','Kosovo':'XK','Kuwait':'KW','Latvia':'LV','Lebanon':'LB','Libya':'LY','Lithuania':'LT','Luxembourg':'LU','Malaysia':'MY','Mali':'ML','Malta':'MT','Mexico':'MX','Moldova':'MD','Montenegro':'ME','Morocco':'MA','Mozambique':'MZ','Netherlands':'NL','New Zealand':'NZ','Nigeria':'NG','North Korea':'KP','North Macedonia':'MK','Norway':'NO','Oman':'OM','Panama':'PA','Paraguay':'PY','Peru':'PE','Philippines':'PH','Poland':'PL','Portugal':'PT','Qatar':'QA','Romania':'RO','Russia':'RU','Saudi Arabia':'SA','Senegal':'SN','Serbia':'RS','Slovakia':'SK','Slovenia':'SI','Somalia':'SO','South Africa':'ZA','South Korea':'KR','Spain':'ES','Sudan':'SD','Sweden':'SE','Switzerland':'CH','Syria':'SY','Trinidad and Tobago':'TT','Tunisia':'TN','Turkey':'TR','Türkiye':'TR','Uganda':'UG','Ukraine':'UA','United Arab Emirates':'AE','UAE':'AE','United States':'US','USA':'US','Uruguay':'UY','Uzbekistan':'UZ','Venezuela':'VE','Vietnam':'VN','Zambia':'ZM','Zimbabwe':'ZW'};
+  const c=country.trim();
+  if(c==='England')return'🏴󠁧󠁢󠁥󠁮󠁧󠁿';
+  if(c==='Scotland')return'🏴󠁧󠁢󠁳󠁣󠁴󠁿';
+  if(c==='Wales')return'🏴󠁧󠁢󠁷󠁬󠁳󠁿';
+  if(c==='Northern Ireland'||c==='United Kingdom'||c==='UK')return'🇬🇧';
+  const code=map[c];
+  if(!code)return'';
+  return code.toUpperCase().split('').map(ch=>String.fromCodePoint(ch.charCodeAt(0)+127397)).join('');
+}
 function timeAgo(iso){const d=Date.now()-new Date(iso).getTime(),m=Math.floor(d/60000);if(m<1)return'now';if(m<60)return`${m}m`;const h=Math.floor(m/60);if(h<24)return`${h}h`;return`${Math.floor(h/24)}d`;}
 async function syncTeams(teams){try{await fetch('/api/teams',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(teams)});}catch(e){console.error('sync teams:',e);}}
 async function syncFixture(f){try{await fetch(`/api/fixture/${f.id}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});}catch(e){console.error('sync fixture:',e);}}
@@ -599,7 +611,7 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
           {isCap&&<div style={{position:"absolute",top:-4,right:-4,width:14,height:14,borderRadius:"50%",background:"#F59E0B",fontSize:7,fontWeight:900,color:"#000",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2,boxShadow:"0 1px 3px rgba(0,0,0,0.5)"}}>C</div>}
         </div>
         <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"block"}}>{(p.name||"?").trim().split(/\s+/).pop()||"?"}</span>
-        <span style={{fontSize:7,color:"rgba(255,255,255,0.55)",textAlign:"center",lineHeight:1.2,textShadow:"0 1px 2px rgba(0,0,0,0.8)",whiteSpace:"nowrap"}}>{p.age||25}{p.country?` · ${p.country}`:""}</span>
+        <span style={{fontSize:7,color:"rgba(255,255,255,0.55)",textAlign:"center",lineHeight:1.2,textShadow:"0 1px 2px rgba(0,0,0,0.8)",whiteSpace:"nowrap"}}>{p.age||25}{flagEmoji(p.country)?` ${flagEmoji(p.country)}`:""}</span>
       </div>
     );
   };
@@ -639,7 +651,7 @@ function FieldLineup({home,away,fixtures,onPlayerClick}){
             <span style={{fontSize:7,fontWeight:900,color:"rgba(255,255,255,0.9)"}}>{p.position==="GK"?"GK":p.position}</span>
           </div>
           <span style={{fontSize:7,color:"rgba(255,255,255,0.6)",textAlign:"center",fontWeight:600,lineHeight:1.2,maxWidth:50,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(p.name||"?").trim().split(/\s+/).pop()}</span>
-          <span style={{fontSize:6,color:"rgba(255,255,255,0.35)",textAlign:"center",lineHeight:1.2,whiteSpace:"nowrap"}}>{p.age||25}{p.country?` · ${p.country}`:""}</span>
+          <span style={{fontSize:6,color:"rgba(255,255,255,0.35)",textAlign:"center",lineHeight:1.2,whiteSpace:"nowrap"}}>{p.age||25}{flagEmoji(p.country)?` ${flagEmoji(p.country)}`:""}</span>
         </div>
       ))}
     </div>
