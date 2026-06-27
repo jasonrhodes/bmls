@@ -101,12 +101,21 @@ function checkBetResult(bet,fixture){
   }
 }
 
-function fantasyPlayerCost(p){
+const DEFAULT_SETTINGS={
+  fantasyBudget:45,
+  points:{goal:6,assist:3,appearance:1,gkCleanSheet:4,ratingHigh:2,ratingLow:-1,yellow:-1,red:-3},
+  playerCosts:{},
+};
+
+function fantasyPlayerCost(p,settings=DEFAULT_SETTINGS){
+  const overrides=settings.playerCosts||{};
+  if(overrides[p.id]!=null)return overrides[p.id];
   if(p.position==='MDF')return Math.round(((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2);
   return p.score||5;
 }
 
-function calcFantasyPoints(fantasyPlayerIds,teams,fixtures){
+function calcFantasyPoints(fantasyPlayerIds,teams,fixtures,settings=DEFAULT_SETTINGS){
+  const pts=settings.points||DEFAULT_SETTINGS.points;
   const allPlayers={};
   teams.forEach(t=>t.players.forEach(p=>{allPlayers[p.id]={...p,teamId:t.id,teamName:t.name,team:t};}));
   const byMW={};
@@ -125,16 +134,16 @@ function calcFantasyPoints(fantasyPlayerIds,teams,fixtures){
         const isHome=f.homeId===player.teamId,isAway=f.awayId===player.teamId;
         if(!isHome&&!isAway)return;
         const ps=(f.playerStats||[]).find(s=>s.playerId===pid);if(!ps)return;
-        let pts=1;
+        let score=pts.appearance;
         const result=isHome?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');
         const rating=calcMatchRating(ps,player.position,result);
-        pts+=(ps.goals||0)*6+(ps.assists||0)*3;
-        if(player.position==='GK'&&((isHome&&f.awayScore===0)||(isAway&&f.homeScore===0)))pts+=4;
-        if(ps.yellowCards)pts-=ps.yellowCards;
-        if(ps.redCard)pts-=3;
-        if(rating>=8)pts+=2;else if(rating<=4)pts-=1;
-        mwPts+=pts;
-        details.push({playerName:player.name,pts,goals:ps.goals||0,assists:ps.assists||0,rating});
+        score+=(ps.goals||0)*pts.goal+(ps.assists||0)*pts.assist;
+        if(player.position==='GK'&&((isHome&&f.awayScore===0)||(isAway&&f.homeScore===0)))score+=pts.gkCleanSheet;
+        if(ps.yellowCards)score+=ps.yellowCards*pts.yellow;
+        if(ps.redCard)score+=pts.red;
+        if(rating>=8)score+=pts.ratingHigh;else if(rating<=4)score+=pts.ratingLow;
+        mwPts+=score;
+        details.push({playerName:player.name,pts:score,goals:ps.goals||0,assists:ps.assists||0,rating});
       });
     });
     totalPoints+=mwPts;
@@ -468,8 +477,8 @@ function MyBetsTab({userData}){
 
 // ── FantasyTab ────────────────────────────────────────────────────────────────
 
-function FantasyTab({teams,fixtures,userData,onSaveFantasy}){
-  const BUDGET=45;
+function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFantasy}){
+  const BUDGET=settings.fantasyBudget??DEFAULT_SETTINGS.fantasyBudget;
   const[picks,setPicks]=useState(userData.fantasyPlayerIds||[]);
   const[saving,setSaving]=useState(false);
   const currentMW=activeMatchWeek(fixtures);
@@ -477,7 +486,7 @@ function FantasyTab({teams,fixtures,userData,onSaveFantasy}){
 
   const allPlayers=useMemo(()=>{
     const arr=[];
-    teams.forEach(t=>t.players.filter(p=>p.name).forEach(p=>arr.push({...p,teamName:t.name,teamColor:t.color,cost:fantasyPlayerCost(p)})));
+    teams.forEach(t=>t.players.filter(p=>p.name).forEach(p=>arr.push({...p,teamName:t.name,teamColor:t.color,cost:fantasyPlayerCost(p,settings)})));
     return arr;
   },[teams]);
 
@@ -501,7 +510,7 @@ function FantasyTab({teams,fixtures,userData,onSaveFantasy}){
     setSaving(false);
   };
 
-  const{totalPoints,breakdown}=useMemo(()=>calcFantasyPoints(picks,teams,fixtures),[picks,teams,fixtures]);
+  const{totalPoints,breakdown}=useMemo(()=>calcFantasyPoints(picks,teams,fixtures,settings),[picks,teams,fixtures,settings]);
 
   const posOrder=['GK','DEF','MDF','FWD'];
   const byPos={};
@@ -592,7 +601,7 @@ function FantasyTab({teams,fixtures,userData,onSaveFantasy}){
 
 // ── LeaderboardTab ────────────────────────────────────────────────────────────
 
-function LeaderboardTab({leagueData,allUserRecords,teams,fixtures,currentUsername}){
+function LeaderboardTab({leagueData,allUserRecords,teams,fixtures,settings=DEFAULT_SETTINGS,currentUsername}){
   if(!leagueData)return<div style={{padding:40,textAlign:"center",color:C.muted}}>Join or create a league to see the leaderboard.</div>;
 
   const members=leagueData.members||[];
@@ -600,7 +609,7 @@ function LeaderboardTab({leagueData,allUserRecords,teams,fixtures,currentUsernam
     const rec=allUserRecords.find(r=>r.username===u);
     if(!rec)return{username:u,balance:100,fantasyPoints:0,betsWon:0,betsTotal:0};
     const bets=rec.bets||[];
-    const{totalPoints}=calcFantasyPoints(rec.fantasyPlayerIds||[],teams,fixtures);
+    const{totalPoints}=calcFantasyPoints(rec.fantasyPlayerIds||[],teams,fixtures,settings);
     return{username:u,balance:rec.balance,fantasyPoints:totalPoints,betsWon:bets.filter(b=>b.status==='won').length,betsTotal:bets.filter(b=>b.status!=='open').length};
   }).sort((a,b)=>b.fantasyPoints-a.fantasyPoints||b.balance-a.balance);
 
@@ -628,6 +637,99 @@ function LeaderboardTab({leagueData,allUserRecords,teams,fixtures,currentUsernam
   );
 }
 
+// ── ManageTab ─────────────────────────────────────────────────────────────────
+
+const MANAGE_PASSWORD='BMLSeditor';
+
+function ManageTab({teams,settings,onSaveSettings}){
+  const[pw,setPw]=useState('');
+  const[unlocked,setUnlocked]=useState(false);
+  const[err,setErr]=useState(false);
+  const[local,setLocal]=useState(()=>({
+    fantasyBudget:settings.fantasyBudget??DEFAULT_SETTINGS.fantasyBudget,
+    points:{...DEFAULT_SETTINGS.points,...(settings.points||{})},
+    playerCosts:{...(settings.playerCosts||{})},
+  }));
+  const[saved,setSaved]=useState(false);
+
+  const allPlayers=teams.flatMap(t=>t.players.filter(p=>p.name).map(p=>({...p,teamName:t.name,teamColor:t.color})));
+
+  if(!unlocked){
+    return(
+      <div style={{maxWidth:360,margin:"60px auto 0",background:C.card,border:`1px solid ${C.border}`,borderRadius:16,padding:28}}>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,letterSpacing:1,color:C.white,marginBottom:6}}>Manage</div>
+        <div style={{fontSize:12,color:C.muted,marginBottom:20}}>Enter password to edit fantasy settings.</div>
+        <input autoFocus type="password" value={pw} onChange={e=>{setPw(e.target.value);setErr(false);}} onKeyDown={e=>e.key==='Enter'&&(pw===MANAGE_PASSWORD?(setUnlocked(true),setErr(false)):setErr(true))} placeholder="Password" style={{width:"100%",background:C.surface,border:`1px solid ${err?C.red:C.border}`,borderRadius:8,padding:"10px 14px",fontSize:14,color:C.text,outline:"none",fontFamily:"'DM Sans',sans-serif",boxSizing:"border-box",marginBottom:err?6:16}}/>
+        {err&&<div style={{fontSize:11,color:C.red,marginBottom:12}}>Incorrect password.</div>}
+        <Btn onClick={()=>pw===MANAGE_PASSWORD?(setUnlocked(true),setErr(false)):setErr(true)} variant="primary">Unlock</Btn>
+      </div>
+    );
+  }
+
+  const setPoints=(key,val)=>setLocal(l=>({...l,points:{...l.points,[key]:val}}));
+  const setPlayerCost=(pid,val)=>setLocal(l=>({...l,playerCosts:{...l.playerCosts,[pid]:val}}));
+  const resetPlayerCost=pid=>setLocal(l=>{const c={...l.playerCosts};delete c[pid];return{...l,playerCosts:c};});
+
+  const save=async()=>{
+    await onSaveSettings(local);
+    setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+  };
+
+  const PtRow=({label,field})=>(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}22`}}>
+      <span style={{fontSize:13,color:C.text}}>{label}</span>
+      <input type="number" value={local.points[field]} onChange={e=>setPoints(field,+e.target.value)} style={{width:64,background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 8px",color:C.text,fontSize:13,fontFamily:"'DM Sans',sans-serif",outline:"none",textAlign:"center"}}/>
+    </div>
+  );
+
+  return(
+    <div>
+      {/* Budget */}
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:16}}>
+        <SLabel>Fantasy Budget</SLabel>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <input type="number" min="10" max="200" value={local.fantasyBudget} onChange={e=>setLocal(l=>({...l,fantasyBudget:+e.target.value}))} style={{width:80,background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:"8px 12px",color:C.text,fontSize:16,fontWeight:700,fontFamily:"'DM Sans',sans-serif",outline:"none",textAlign:"center"}}/>
+          <span style={{fontSize:12,color:C.muted}}>credits total per squad</span>
+        </div>
+      </div>
+
+      {/* Points config */}
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:16}}>
+        <SLabel>Fantasy Points Per Event</SLabel>
+        <PtRow label="Goal" field="goal"/>
+        <PtRow label="Assist" field="assist"/>
+        <PtRow label="Appearance" field="appearance"/>
+        <PtRow label="GK Clean Sheet" field="gkCleanSheet"/>
+        <PtRow label="Rating 8+ bonus" field="ratingHigh"/>
+        <PtRow label="Rating ≤4 penalty" field="ratingLow"/>
+        <PtRow label="Yellow card" field="yellow"/>
+        <PtRow label="Red card" field="red"/>
+      </div>
+
+      {/* Player costs */}
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:20}}>
+        <SLabel>Player Costs (credits)</SLabel>
+        <div style={{fontSize:11,color:C.muted,marginBottom:12}}>Leave blank to use auto-calculated cost based on player score.</div>
+        {allPlayers.map(p=>{
+          const auto=p.position==='MDF'?Math.round(((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2):(p.score||5);
+          const custom=local.playerCosts[p.id];
+          return(
+            <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${C.border}22`}}>
+              <span style={{background:posColor(p.position)+'22',color:posColor(p.position),borderRadius:3,padding:"1px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
+              <span style={{flex:1,fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+              <span style={{fontSize:10,color:C.muted,flexShrink:0}}>auto:{auto}</span>
+              <input type="number" min="1" max="20" placeholder={String(auto)} value={custom??''} onChange={e=>e.target.value===''?resetPlayerCost(p.id):setPlayerCost(p.id,+e.target.value)} style={{width:56,background:C.surface,border:`1px solid ${custom!=null?C.gold:C.border}`,borderRadius:6,padding:"4px 6px",color:C.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none",textAlign:"center"}}/>
+            </div>
+          );
+        })}
+      </div>
+
+      <Btn onClick={save} variant="gold" style={{width:"100%"}}>{saved?'✓ Saved!':'Save Settings'}</Btn>
+    </div>
+  );
+}
+
 // ── BettingApp root ───────────────────────────────────────────────────────────
 
 function BettingApp(){
@@ -637,6 +739,7 @@ function BettingApp(){
   const[leagueData,setLeagueData]=useState(null);
   const[allUserRecords,setAllUserRecords]=useState([]);
   const[allFixtures,setAllFixtures]=useState([]);
+  const[settings,setSettings]=useState(DEFAULT_SETTINGS);
   const[tab,setTab]=useState('bet');
   const[seasonReset,setSeasonReset]=useState(false);
 
@@ -646,6 +749,8 @@ function BettingApp(){
     const bettingUsers=data.fixtures.filter(f=>f.type==='betting_user');
     setAllUserRecords(bettingUsers);
     setAllFixtures(data.fixtures);
+    const savedSettings=data.fixtures.find(f=>f.id==='betting_settings');
+    if(savedSettings)setSettings({...DEFAULT_SETTINGS,...savedSettings,points:{...DEFAULT_SETTINGS.points,...savedSettings.points}});
     const saved=localStorage.getItem('bmls_betting_username');
     if(saved){
       const existing=bettingUsers.find(u=>u.username===saved);
@@ -733,6 +838,12 @@ function BettingApp(){
     await saveRecord(updated.id,updated);
   };
 
+  const handleSaveSettings=async(newSettings)=>{
+    const record={id:'betting_settings',type:'betting_settings',...newSettings};
+    await saveRecord('betting_settings',record);
+    setSettings({...DEFAULT_SETTINGS,...newSettings,points:{...DEFAULT_SETTINGS.points,...newSettings.points}});
+  };
+
   const handleSaveFantasy=async(playerIds,mw)=>{
     const updated={...userData,fantasyPlayerIds:playerIds,fantasyLockedMW:mw};
     setUserData(updated);
@@ -749,7 +860,7 @@ function BettingApp(){
   const teams=bmls?.teams||[];
   const fixtures=bmls?.fixtures?.filter(f=>f.homeId&&f.awayId&&!f.type)||[];
   const openBetCount=(userData?.bets||[]).filter(b=>b.status==='open').length;
-  const TABS=[{key:'bet',label:'Bet'},{key:'mybets',label:`My Bets${openBetCount?` (${openBetCount})`:''}` },{key:'fantasy',label:'Fantasy'},{key:'leaderboard',label:'League'}];
+  const TABS=[{key:'bet',label:'Bet'},{key:'mybets',label:`My Bets${openBetCount?` (${openBetCount})`:''}` },{key:'fantasy',label:'Fantasy'},{key:'leaderboard',label:'League'},{key:'manage',label:'Manage'}];
 
   return(
     <div style={{background:C.bg,minHeight:"100vh",fontFamily:"'DM Sans',sans-serif"}}>
@@ -793,8 +904,9 @@ function BettingApp(){
       <div style={{maxWidth:720,margin:"0 auto",padding:"16px 16px 40px"}}>
         {tab==='bet'&&<BettingTab teams={teams} fixtures={fixtures} userData={userData} onPlaceBet={handlePlaceBet}/>}
         {tab==='mybets'&&<MyBetsTab userData={userData}/>}
-        {tab==='fantasy'&&<FantasyTab teams={teams} fixtures={fixtures} userData={userData} onSaveFantasy={handleSaveFantasy}/>}
-        {tab==='leaderboard'&&<LeaderboardTab leagueData={leagueData} allUserRecords={allUserRecords} teams={teams} fixtures={fixtures} currentUsername={userData.username}/>}
+        {tab==='fantasy'&&<FantasyTab teams={teams} fixtures={fixtures} userData={userData} settings={settings} onSaveFantasy={handleSaveFantasy}/>}
+        {tab==='leaderboard'&&<LeaderboardTab leagueData={leagueData} allUserRecords={allUserRecords} teams={teams} fixtures={fixtures} settings={settings} currentUsername={userData.username}/>}
+        {tab==='manage'&&<ManageTab teams={teams} settings={settings} onSaveSettings={handleSaveSettings}/>}
       </div>
     </div>
   );
