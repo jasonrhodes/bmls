@@ -1381,17 +1381,6 @@ function CareerTab({nations,wcMeta,groupMatches}){
   const[koIsHome,setKoIsHome]=useState(career.koIsHome??null);
   const[savedLineup,setSavedLineup]=useState(career.savedLineup||[]);
   const inp={background:C.surface,border:`1px solid ${C.border}`,borderRadius:5,padding:'5px 0',color:C.text,fontSize:15,fontFamily:"'Bebas Neue',sans-serif",outline:'none',width:'100%',textAlign:'center'};
-  useEffect(()=>{
-    if(!qualified||koPhase==='champion'||koPhase==='eliminated')return;
-    const updates={};
-    if(!koOpponent){
-      const pool=named.filter(n=>n.id!==career.nationId);
-      const nextOpp=pool[Math.floor(Math.random()*pool.length)]?.id;
-      if(nextOpp){setKoOpponent(nextOpp);updates.koOpponent=nextOpp;}
-    }
-    if(koIsHome===null){const ih=Math.random()<0.5;setKoIsHome(ih);updates.koIsHome=ih;}
-    if(Object.keys(updates).length)saveCareer({...career,...updates});
-  },[qualified,koPhase,koOpponent,koIsHome]);
   const playMatch=(matchIdx,isHome,oppId)=>{
     const mid=`career_gm_${myGroup.id}${matchIdx+1}`;
     if(careerResults[mid])return;
@@ -1446,6 +1435,17 @@ function CareerTab({nations,wcMeta,groupMatches}){
   const[koResults,setKoResults]=useState(career.koResults||{});
   const[koHi,setKoHi]=useState('');const[koAi,setKoAi]=useState('');
   const[koOpponent,setKoOpponent]=useState(career.koOpponent||null);
+  useEffect(()=>{
+    if(!qualified||koPhase==='champion'||koPhase==='eliminated')return;
+    const updates={};
+    if(!koOpponent){
+      const pool=named.filter(n=>n.id!==career.nationId);
+      const nextOpp=pool[Math.floor(Math.random()*pool.length)]?.id;
+      if(nextOpp){setKoOpponent(nextOpp);updates.koOpponent=nextOpp;}
+    }
+    if(koIsHome===null){const ih=Math.random()<0.5;setKoIsHome(ih);updates.koIsHome=ih;}
+    if(Object.keys(updates).length)saveCareer({...career,...updates});
+  },[qualified,koPhase,koOpponent,koIsHome]);
   const saveKo=(phase,result,nextOpp,nextPhase)=>{
     const kr={...koResults,[phase]:result};
     const nextIH=nextOpp?Math.random()<0.5:null;
