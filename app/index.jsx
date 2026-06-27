@@ -370,8 +370,8 @@ function MatchSimPanel({fixture,home,away,fixtures,sim,onSimulate,onApply}){
 function calcOdds(home,away){
   const{hxg,axg}=predictMatch(home,away);
   const diff=hxg-axg;
-  const pH=Math.min(0.92,Math.max(0.05,0.5+diff*0.32));
-  const pA=Math.min(0.92,Math.max(0.05,0.5-diff*0.32));
+  const pH=Math.min(0.94,Math.max(0.04,0.5+diff*0.38));
+  const pA=Math.min(0.94,Math.max(0.04,0.5-diff*0.38));
   const pD=Math.max(0.04,0.30-Math.abs(diff)*0.10);
   const n=pH+pD+pA,mg=1.07;
   return{home:+((mg/(pH/n))).toFixed(2),draw:+((mg/(pD/n))).toFixed(2),away:+((mg/(pA/n))).toFixed(2),pHome:Math.round(pH/n*100),pDraw:Math.round(pD/n*100),pAway:Math.round(pA/n*100)};
