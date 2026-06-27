@@ -831,11 +831,12 @@ function StatsTab({teams,fixtures}){
   const gamesPerTeam=Math.max(1,...Object.values(teamFxCount));
   const scoreBasedProj=useMemo(()=>teams.flatMap(t=>{
     const variance=id=>{const h=Math.abs(Math.round(id||0))%37;return 0.86+h*0.0078;};
+    const teamFactor=0.80+(lineupRatings(t).atk/10)*0.40;
     return t.players.filter(p=>p.name).map(p=>{
       const pos=(p.position||'').trim();
       const sc=(p.score||5)/10,atk=(p.mdfAtkScore||p.score||5)/10;
       const wide=p.wide||false;
-      const v=variance(p.id);
+      const v=variance(p.id)*teamFactor;
       const appRate=0.85;
       const gpg=pos==='FWD'?sc*1.30:pos==='MDF'?0.03+atk*0.32:pos==='DEF'?(wide?0.02+sc*0.12:sc*0.04):0;
       const apg=pos==='FWD'?0.04+sc*0.28:pos==='MDF'?0.10+atk*0.55:pos==='DEF'?(wide?0.02+sc*0.12:sc*0.06):0;
