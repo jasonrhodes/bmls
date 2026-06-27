@@ -1305,12 +1305,12 @@ function generateRumors(teams,fixtures){
       const positions=[...new Set(starters.map(p=>p.position))];
       pos=positions[Math.floor(sr(seed0+1)*positions.length)];
     } else {
-      pos=[...starters].sort((a,b)=>score(a)-score(b))[0].position;
+      pos=([...starters].filter(p=>p.position!=='GK').sort((a,b)=>score(a)-score(b))[0]||starters[0]).position;
     }
-    const outCands=starters.filter(p=>p.position===pos);
+    const outCands=starters.filter(p=>p.position===pos&&p.position!=='GK');
     if(!outCands.length)return;
     const outgoing=[...outCands].sort((a,b)=>score(a)-score(b))[0];
-    const candidates=named.filter(t=>t.id!==buyTeam.id).flatMap(t=>t.players.filter(p=>p.name&&p.position===pos&&score(p)>score(outgoing)&&!usedTargets.has(p.id)).map(p=>({p,t})));
+    const candidates=named.filter(t=>t.id!==buyTeam.id).flatMap(t=>t.players.filter(p=>p.name&&p.position===pos&&p.position!=='GK'&&score(p)>score(outgoing)&&!usedTargets.has(p.id)).map(p=>({p,t})));
     const r=buildRumor(buyTeam,outgoing,candidates,buyTeam.id*17+outgoing.id);
     if(r)rumors.push(r);
   });
@@ -1320,13 +1320,13 @@ function generateRumors(teams,fixtures){
     const lineup=predictedLineup(buyTeam,fixtures);
     const starters=[lineup.gk,...lineup.defs,...lineup.mdfs,...lineup.fwds].filter(Boolean);
     // Pick a decent starter (score 7+) to use as bait — not the weakest
-    const baitCands=starters.filter(p=>score(p)>=7&&!usedOutgoing.has(p.id));
+    const baitCands=starters.filter(p=>score(p)>=7&&!usedOutgoing.has(p.id)&&p.position!=='GK');
     if(!baitCands.length)return;
     const seed0=buyTeam.id*53;
     const bait=baitCands[Math.floor(sr(seed0)*baitCands.length)];
-    // Target: elite player (score 8+) from another team, any position, significantly better
+    // Target: elite player (score 8+) from another team, any non-GK position, significantly better
     const eliteCands=named.filter(t=>t.id!==buyTeam.id).flatMap(t=>
-      t.players.filter(p=>p.name&&score(p)>=8&&score(p)>score(bait)+1&&!usedTargets.has(p.id)).map(p=>({p,t}))
+      t.players.filter(p=>p.name&&p.position!=='GK'&&score(p)>=8&&score(p)>score(bait)+1&&!usedTargets.has(p.id)).map(p=>({p,t}))
     );
     const r=buildRumor(buyTeam,bait,eliteCands,buyTeam.id*41+bait.id);
     if(r)rumors.push({...r,type:'ambition'});
