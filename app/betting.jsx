@@ -758,7 +758,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
     <div>
       {/* Sub-tabs */}
       <div style={{display:"flex",background:C.surface,borderRadius:10,padding:4,marginBottom:16}}>
-        {[['team','Team'],['transfers','Transfers'],['points','Points']].map(([key,label])=>(
+        {[['team','Team'],['transfers','Transfers'],['points','Points'],['tips','Tips']].map(([key,label])=>(
           <button key={key} onClick={()=>setSubView(key)} style={{flex:1,background:subView===key?C.card:'transparent',border:"none",borderRadius:8,padding:"8px 0",fontSize:12,fontWeight:700,color:subView===key?C.gold:C.muted,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{label}</button>
         ))}
       </div>
@@ -906,6 +906,85 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
           )}
         </div>
       )}
+
+      {subView==='tips'&&(()=>{
+        const pts=settings.points||DEFAULT_SETTINGS.points;
+        const playedFixtures=fixtures.filter(f=>f.played);
+        const byMW={};
+        playedFixtures.forEach(f=>{const mw=f.matchWeek||0;if(!byMW[mw])byMW[mw]=[];byMW[mw].push(f);});
+        // compute top-5 per MW
+        const mwTop5={};
+        Object.entries(byMW).forEach(([mw,mwF])=>{
+          const ratings=[];
+          mwF.forEach(f=>(f.playerStats||[]).forEach(ps=>{
+            const pl=allPlayers.find(p=>p.id===ps.playerId);if(!pl)return;
+            const ih=f.homeId===pl.teamId,ia=f.awayId===pl.teamId;if(!ih&&!ia)return;
+            const res=ih?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');
+            ratings.push({playerId:ps.playerId,rating:calcMatchRating(ps,pl.position,res)});
+          }));
+          mwTop5[mw]=new Set(ratings.sort((a,b)=>b.rating-a.rating).slice(0,5).map(r=>r.playerId));
+        });
+        // total points per player across all MWs
+        const playerTotals=allPlayers.map(p=>{
+          let total=0;
+          Object.entries(byMW).forEach(([mw,mwF])=>{total+=scorePlayer(p.id,{...p,teamId:teams.find(t=>t.players.some(pl=>pl.id===p.id))?.id},mwF,pts,mwTop5[mw]||new Set());});
+          const mwsPlayed=Object.values(byMW).filter(mwF=>mwF.some(f=>(f.playerStats||[]).some(ps=>ps.playerId===p.id))).length;
+          return{...p,totalPts:total,mwsPlayed,ptsPerCr:p.cost>0?total/p.cost:0,ptsPerMW:mwsPlayed>0?total/mwsPlayed:0};
+        });
+        const withData=playerTotals.filter(p=>p.mwsPlayed>0);
+        const steals=playerTotals.filter(p=>p.mwsPlayed>0).sort((a,b)=>b.ptsPerCr-a.ptsPerCr).slice(0,6);
+        const avoid=withData.filter(p=>p.cost>=6).sort((a,b)=>a.ptsPerCr-b.ptsPerCr).slice(0,5);
+        // form: top scorers from last 2 MWs
+        const mwNums=Object.keys(byMW).map(Number).sort((a,b)=>b-a);
+        const recentMWs=mwNums.slice(0,2);
+        const recentTop=playerTotals.map(p=>{
+          let recent=0;
+          recentMWs.forEach(mw=>{if(byMW[mw])recent+=scorePlayer(p.id,{...p,teamId:teams.find(t=>t.players.some(pl=>pl.id===p.id))?.id},byMW[mw],pts,mwTop5[mw]||new Set());});
+          return{...p,recentPts:recent};
+        }).filter(p=>p.recentPts>0).sort((a,b)=>b.recentPts-a.recentPts).slice(0,5);
+        const TipCard=({p,badge,badgeColor,stat,statLabel})=>(
+          <div style={{display:"flex",alignItems:"center",gap:10,background:C.surface,borderRadius:8,padding:"10px 12px",marginBottom:6}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:p.teamColor||C.accent,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:8,fontWeight:700,color:isLight(p.teamColor||'')?'#000':'#fff'}}>{p.position}</span>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+              <div style={{fontSize:10,color:C.muted}}>{p.teamName} · {p.cost}cr</div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:badgeColor}}>{stat}</div>
+              <div style={{fontSize:9,color:C.muted}}>{statLabel}</div>
+            </div>
+            <div style={{background:badgeColor+'22',color:badgeColor,borderRadius:4,padding:"2px 6px",fontSize:9,fontWeight:700,flexShrink:0}}>{badge}</div>
+          </div>
+        );
+        return(
+          <div>
+            {withData.length===0&&<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:40}}>Tips will appear once matchweeks have been played.</div>}
+            {steals.length>0&&(
+              <div style={{marginBottom:20}}>
+                <SLabel>🔥 Best Value Picks</SLabel>
+                <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Highest fantasy points per credit — most bang for your buck</div>
+                {steals.map(p=><TipCard key={p.id} p={p} badge="VALUE" badgeColor={C.green} stat={`${p.ptsPerCr.toFixed(1)}`} statLabel="pts/cr"/>)}
+              </div>
+            )}
+            {recentTop.length>0&&(
+              <div style={{marginBottom:20}}>
+                <SLabel>⚡ In Form</SLabel>
+                <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Top scorers over the last {recentMWs.length} matchweek{recentMWs.length!==1?'s':''}</div>
+                {recentTop.map(p=><TipCard key={p.id} p={p} badge="FORM" badgeColor={C.gold} stat={`+${Math.round(p.recentPts)}`} statLabel="recent pts"/>)}
+              </div>
+            )}
+            {avoid.length>0&&(
+              <div style={{marginBottom:20}}>
+                <SLabel>⚠️ Consider Avoiding</SLabel>
+                <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Expensive players (6cr+) with low points return</div>
+                {avoid.map(p=><TipCard key={p.id} p={p} badge="AVOID" badgeColor={C.red} stat={`${p.ptsPerCr.toFixed(1)}`} statLabel="pts/cr"/>)}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {subView==='points'&&(
         <div>
