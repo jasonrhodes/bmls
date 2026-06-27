@@ -624,7 +624,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   posOrder.forEach(pos=>{byPos[pos]=allPlayers.filter(p=>p.position===pos).sort((a,b)=>b.cost-a.cost);});
 
   // Squad builder view
-  if(!hasFullSquad||subView==='squad'){
+  if((!hasFullSquad&&subView!=='tips')||subView==='squad'){
     const slotMap={};
     ['GK','DEF','MDF','FWD'].forEach(pos=>{
       const ids=picking.filter(id=>allPlayers.find(p=>p.id===id)?.position===pos);
@@ -721,6 +721,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
           </div>
         )}
         <Btn onClick={confirmSquad} disabled={!squadComplete||saving} variant="gold" style={{width:"100%"}}>{saving?'Saving…':'Confirm Squad'}</Btn>
+        <button onClick={()=>setSubView('tips')} style={{width:"100%",marginTop:10,background:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 0",fontSize:12,fontWeight:700,color:C.muted,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>View Tips before picking →</button>
       </div>
     );
   }
@@ -990,6 +991,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
           const greedyCost=BUDGET-rem;
           return(
             <div>
+              {!hasFullSquad&&<button onClick={()=>setSubView('team')} style={{width:"100%",marginBottom:16,background:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 0",fontSize:12,fontWeight:700,color:C.muted,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>← Back to Squad Builder</button>}
               {greedySquad.length>0&&(
                 <div style={{marginBottom:20}}>
                   <SLabel>⭐ Suggested Starting Squad</SLabel>
