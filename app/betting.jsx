@@ -540,6 +540,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   const[transferOut,setTransferOut]=useState(null);
   const[pendingTransfers,setPendingTransfers]=useState([]);
   const[saving,setSaving]=useState(false);
+  const[pickingSlot,setPickingSlot]=useState(null);
   const isLocked=!!(userData.fantasyHistory||{})[String(currentMW)];
   const freeTransfers=userData.freeTransfers??1;
   const boosts=userData.boostsAvailable||{benchBoost:true,tripleCaptain:true,wildcard:true};
@@ -623,41 +624,102 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
 
   // Squad builder view
   if(!hasFullSquad||subView==='squad'){
+    const slotMap={};
+    ['GK','DEF','MDF','FWD'].forEach(pos=>{
+      const ids=picking.filter(id=>allPlayers.find(p=>p.id===id)?.position===pos);
+      slotMap[pos]=Array.from({length:REQUIRED[pos]},(_,i)=>ids[i]?allPlayers.find(p=>p.id===ids[i]):null);
+    });
+    const addToSlot=p=>{
+      if(picking.includes(p.id)||p.cost>pickingRemaining)return;
+      setPicking(prev=>[...prev,p.id]);
+      setPickingSlot(null);
+    };
+    const removeFromSlot=(pos,idx)=>{
+      const ids=picking.filter(id=>allPlayers.find(p=>p.id===id)?.position===pos);
+      const rid=ids[idx];
+      if(rid)setPicking(prev=>prev.filter(id=>id!==rid));
+    };
+    const PitchSlot=({player,pos,idx})=>{
+      const empty=!player;
+      const col=posColor(pos);
+      const isActive=pickingSlot&&pickingSlot.pos===pos&&pickingSlot.idx===idx;
+      return(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,minWidth:52}}>
+          <div
+            onClick={()=>empty?setPickingSlot(isActive?null:{pos,idx}):removeFromSlot(pos,idx)}
+            style={{position:"relative",width:52,height:52,borderRadius:"50%",
+              background:empty?(isActive?"rgba(255,255,255,0.18)":"rgba(255,255,255,0.08)"):player.teamColor||col,
+              border:`2.5px ${empty?"dashed":"solid"} ${empty?(isActive?"rgba(255,255,255,0.7)":"rgba(255,255,255,0.3)"):player.teamColor||col}`,
+              display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
+              boxShadow:empty?"none":`0 2px 10px ${player.teamColor||col}77`,transition:"all 0.15s"}}
+          >
+            {empty
+              ?<span style={{fontSize:26,lineHeight:1,color:isActive?"rgba(255,255,255,0.9)":"rgba(255,255,255,0.45)",fontWeight:300}}>+</span>
+              :<span style={{fontSize:8,fontWeight:700,color:"#fff"}}>{player.position}</span>
+            }
+            {!empty&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"rgba(255,255,255,0.8)",fontWeight:700}}>×</div>}
+          </div>
+          <span style={{fontSize:8,fontWeight:700,color:"#fff",textAlign:"center",maxWidth:56,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textShadow:"0 1px 3px rgba(0,0,0,0.9)"}}>
+            {empty?pos:(player.name||'').trim().split(/\s+/).pop()}
+          </span>
+          <span style={{fontSize:7,color:"rgba(255,255,255,0.55)",textShadow:"0 1px 2px rgba(0,0,0,0.8)"}}>{empty?'':`${player.cost}cr`}</span>
+        </div>
+      );
+    };
+    const pickerPos=pickingSlot?.pos;
+    const pickerOptions=pickerPos?byPos[pickerPos].filter(p=>!picking.includes(p.id)):[];
     return(
       <div>
-        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:16}}>
-          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:C.gold,letterSpacing:1,marginBottom:4}}>Build Your Squad</div>
-          <div style={{fontSize:11,color:C.muted,marginBottom:12}}>Pick 9 players: 1 GK · 3 DEF · 2 MDF · 3 FWD</div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+        {/* Header */}
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:12}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold,letterSpacing:1}}>Build Your Squad</div>
+            <div style={{fontSize:12,fontWeight:700,color:pickingRemaining<0?C.red:C.text}}>{pickingRemaining} cr left</div>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {['GK','DEF','MDF','FWD'].map(pos=>(
               <div key={pos} style={{background:posColor(pos)+'22',borderRadius:6,padding:"3px 10px",display:"flex",gap:4,alignItems:"center"}}>
                 <span style={{fontSize:9,fontWeight:700,color:posColor(pos)}}>{pos}</span>
                 <span style={{fontSize:12,fontWeight:700,color:pickCounts[pos]===REQUIRED[pos]?C.green:C.text}}>{pickCounts[pos]}/{REQUIRED[pos]}</span>
               </div>
             ))}
-            <div style={{marginLeft:"auto",fontSize:11,color:pickingRemaining<0?C.red:C.text,fontWeight:700}}>Budget: {pickingRemaining} left</div>
           </div>
-          <Btn onClick={confirmSquad} disabled={!squadComplete||saving} variant="gold" style={{width:"100%"}}>{saving?'Saving…':'Confirm Squad'}</Btn>
         </div>
-        {posOrder.map(pos=>(
-          <div key={pos} style={{marginBottom:16}}>
-            <div style={{fontSize:10,fontWeight:700,color:posColor(pos),letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>{pos} ({pickCounts[pos]}/{REQUIRED[pos]})</div>
-            {byPos[pos].map(p=>{
-              const isPicked=picking.includes(p.id);
-              const posFull=!isPicked&&pickCounts[p.position]>=REQUIRED[p.position];
-              const cantAfford=!isPicked&&p.cost>pickingRemaining;
-              return(
-                <button key={p.id} onClick={()=>togglePick(p)} disabled={posFull||cantAfford} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:isPicked?posColor(p.position)+'22':C.surface,border:`1px solid ${isPicked?posColor(p.position):C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:posFull||cantAfford?'not-allowed':'pointer',opacity:posFull||cantAfford?0.45:1,textAlign:"left"}}>
-                  <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
-                  <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}</span>
-                  <span style={{fontSize:10,color:C.muted}}>{p.teamName}</span>
-                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:isPicked?posColor(p.position):C.gold}}>{p.cost}</span>
-                  {isPicked&&<span style={{color:C.green,fontSize:14}}>✓</span>}
-                </button>
-              );
-            })}
+        {/* Pitch */}
+        <div style={{position:"relative",background:"linear-gradient(180deg,#1a7340 0%,#1e8a4a 40%,#1a7340 100%)",borderRadius:12,padding:"16px 8px",marginBottom:12,overflow:"hidden"}}>
+          <div style={{position:"absolute",top:"50%",left:"8%",right:"8%",height:1,background:"rgba(255,255,255,0.12)",transform:"translateY(-50%)"}}/>
+          <div style={{position:"absolute",top:"50%",left:"50%",width:54,height:54,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",transform:"translate(-50%,-50%)"}}/>
+          <div style={{position:"absolute",bottom:0,left:"28%",right:"28%",height:"16%",border:"1px solid rgba(255,255,255,0.1)",borderBottom:"none"}}/>
+          <div style={{position:"absolute",top:0,left:"28%",right:"28%",height:"16%",border:"1px solid rgba(255,255,255,0.1)",borderTop:"none"}}/>
+          {['FWD','MDF','DEF','GK'].map(pos=>(
+            <div key={pos} style={{display:"flex",justifyContent:"center",gap:pos==='GK'?0:8,marginBottom:pos==='GK'?0:14}}>
+              {slotMap[pos].map((player,idx)=><PitchSlot key={idx} player={player} pos={pos} idx={idx}/>)}
+            </div>
+          ))}
+        </div>
+        {/* Player picker panel */}
+        {pickingSlot&&(
+          <div style={{background:C.card,border:`2px solid ${posColor(pickerPos)}`,borderRadius:12,padding:16,marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{fontWeight:700,fontSize:13,color:posColor(pickerPos)}}>Pick a {pickerPos}</div>
+              <button onClick={()=>setPickingSlot(null)} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer",lineHeight:1}}>×</button>
+            </div>
+            {pickerOptions.length===0
+              ?<div style={{color:C.muted,fontSize:12,textAlign:"center",padding:"12px 0"}}>All {pickerPos}s already selected</div>
+              :pickerOptions.map(p=>{
+                const cantAfford=p.cost>pickingRemaining;
+                return(
+                  <button key={p.id} onClick={()=>addToSlot(p)} disabled={cantAfford} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",marginBottom:6,cursor:cantAfford?'not-allowed':'pointer',opacity:cantAfford?0.38:1,textAlign:"left"}}>
+                    <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}</span>
+                    <span style={{fontSize:10,color:C.muted}}>{p.teamName}</span>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold}}>{p.cost}</span>
+                  </button>
+                );
+              })
+            }
           </div>
-        ))}
+        )}
+        <Btn onClick={confirmSquad} disabled={!squadComplete||saving} variant="gold" style={{width:"100%"}}>{saving?'Saving…':'Confirm Squad'}</Btn>
       </div>
     );
   }
