@@ -103,7 +103,7 @@ function checkBetResult(bet,fixture){
 
 const DEFAULT_SETTINGS={
   fantasyBudget:45,
-  points:{goal:6,assist:3,appearance:1,gkCleanSheet:4,ratingHigh:2,ratingLow:-1,yellow:-1,red:-3},
+  points:{goal:6,assist:3,appearance:1,gkCleanSheet:4,ratingHigh:2,ratingLow:-1,yellow:-1,red:-3,mwTopBonus:2},
   playerCosts:{},
 };
 
@@ -127,6 +127,18 @@ function calcFantasyPoints(fantasyPlayerIds,teams,fixtures,settings=DEFAULT_SETT
   let totalPoints=0;
   const breakdown=[];
   Object.entries(byMW).forEach(([mw,mwF])=>{
+    // Build top-5 rated players across ALL players in this MW
+    const mwRatings=[];
+    mwF.forEach(f=>{
+      (f.playerStats||[]).forEach(ps=>{
+        const pl=allPlayers[ps.playerId];if(!pl)return;
+        const ih=f.homeId===pl.teamId,ia=f.awayId===pl.teamId;if(!ih&&!ia)return;
+        const res=ih?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');
+        mwRatings.push({playerId:ps.playerId,rating:calcMatchRating(ps,pl.position,res)});
+      });
+    });
+    const top5=new Set(mwRatings.sort((a,b)=>b.rating-a.rating).slice(0,5).map(r=>r.playerId));
+
     let mwPts=0;const details=[];
     fantasyPlayerIds.forEach(pid=>{
       const player=allPlayers[pid];if(!player)return;
@@ -142,8 +154,9 @@ function calcFantasyPoints(fantasyPlayerIds,teams,fixtures,settings=DEFAULT_SETT
         if(ps.yellowCards)score+=ps.yellowCards*pts.yellow;
         if(ps.redCard)score+=pts.red;
         if(rating>=8)score+=pts.ratingHigh;else if(rating<=4)score+=pts.ratingLow;
+        if(top5.has(pid))score+=(pts.mwTopBonus??2);
         mwPts+=score;
-        details.push({playerName:player.name,pts:score,goals:ps.goals||0,assists:ps.assists||0,rating});
+        details.push({playerName:player.name,pts:score,goals:ps.goals||0,assists:ps.assists||0,rating,topRated:top5.has(pid)});
       });
     });
     totalPoints+=mwPts;
@@ -701,6 +714,7 @@ function ManageTab({teams,settings,onSaveSettings}){
         <PtRow label="Assist" field="assist"/>
         <PtRow label="Appearance" field="appearance"/>
         <PtRow label="Clean Sheet (GK & DEF)" field="gkCleanSheet"/>
+        <PtRow label="Top 5 Rated (matchweek)" field="mwTopBonus"/>
         <PtRow label="Rating 8+ bonus" field="ratingHigh"/>
         <PtRow label="Rating ≤4 penalty" field="ratingLow"/>
         <PtRow label="Yellow card" field="yellow"/>
