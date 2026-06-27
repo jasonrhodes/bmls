@@ -1419,8 +1419,8 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
         const applyChange=(p,t,dir)=>{
           const nt=teams.map(tm=>tm.id!==t.id?tm:{...tm,players:tm.players.map(pl=>{
             if(pl.id!==p.id)return pl;
-            const newScore=Math.min(10,Math.max(1,+(((pl.score||5)+dir*0.5).toFixed(1))));
-            const newAtk=pl.position==='MDF'?Math.min(10,Math.max(1,+(((pl.mdfAtkScore||pl.score||5)+dir*0.5).toFixed(1)))):pl.mdfAtkScore;
+            const newScore=Math.min(10,Math.max(1,(pl.score||5)+dir));
+            const newAtk=pl.position==='MDF'?Math.min(10,Math.max(1,(pl.mdfAtkScore||pl.score||5)+dir)):pl.mdfAtkScore;
             return{...pl,score:newScore,mdfAtkScore:newAtk};
           })});
           setTeams(nt);syncTeams(nt);
@@ -1440,7 +1440,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
               const isUp=dir>0;
               const color=isUp?C.green:C.red;
               const curScore=p.score||5;
-              const newScore=+(curScore+dir*0.5).toFixed(1);
+              const newScore=curScore+dir;
               return(
                 <div key={key} style={{background:C.card,border:`1px solid ${color}44`,borderRadius:10,padding:"14px 16px",marginBottom:10}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
@@ -1458,7 +1458,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
                     {ps.goals}G {ps.assists}A actual · {Math.round(expected*10)/10} expected over {gp} games
                   </div>
                   <div style={{display:"flex",gap:8}}>
-                    <button onClick={()=>{applyChange(p,t,dir);dismiss(key);}} style={{flex:1,background:color,color:"#fff",border:"none",borderRadius:7,padding:"9px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{isUp?"Upgrade +0.5":"Downgrade −0.5"}</button>
+                    <button onClick={()=>{applyChange(p,t,dir);dismiss(key);}} style={{flex:1,background:color,color:"#fff",border:"none",borderRadius:7,padding:"9px 0",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{isUp?"Upgrade +1":"Downgrade −1"}</button>
                     <button onClick={()=>dismiss(key)} style={{background:C.surface,color:C.muted,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 14px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Dismiss</button>
                   </div>
                 </div>
