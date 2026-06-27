@@ -929,7 +929,10 @@ function StatsTab({teams,fixtures}){
               <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:isFirst?28:18,color:isFirst?current.color:C.muted,minWidth:28,textAlign:"center"}}>{i+1}</span>
               <span style={{width:8,height:8,borderRadius:"50%",background:p.teamColor,flexShrink:0}}/>
               <div style={{flex:1}}>
-                <div style={{fontSize:14,fontWeight:600,color:C.text}}>{p.name||"Unnamed"}</div>
+                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                  <div style={{fontSize:14,fontWeight:600,color:C.text}}>{p.name||"Unnamed"}</div>
+                  {p.country&&(nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:20,height:14,borderRadius:2,objectFit:"cover",flexShrink:0}} alt=""/>:<span style={{fontSize:11}}>{flagEmoji(p.country)}</span>)}
+                </div>
                 <div style={{fontSize:11,color:C.muted}}>{p.teamName} · {p.position} · {p.apps} app{p.apps!==1?"s":""}</div>
               </div>
               <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:isFirst?32:24,color:isFirst?current.color:C.text,lineHeight:1}}>{val}</div>
@@ -967,6 +970,7 @@ function RatingsTab({teams}){
                 <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
                 <TeamBadge color={p._color} crest={p._crest} size={18}/>
                 <span style={{fontSize:14,fontWeight:600,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                {p.country&&(nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:22,height:15,borderRadius:2,objectFit:"cover",flexShrink:0}} alt=""/>:<span style={{fontSize:12}}>{flagEmoji(p.country)}</span>)}
                 <span style={{fontSize:10,color:C.muted}}>Age {p.age||25}</span>
                 <span style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700}}>{p.position}</span>
                 <span style={{fontSize:11,color:C.muted}}>{p._short}</span>
@@ -999,6 +1003,7 @@ function RatingsTab({teams}){
                 <span style={{fontSize:12,color:C.muted,minWidth:20}}>#{i+1}</span>
                 <TeamBadge color={p._color} crest={p._crest} size={18}/>
                 <span style={{fontSize:14,fontWeight:600,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                {p.country&&(nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:22,height:15,borderRadius:2,objectFit:"cover",flexShrink:0}} alt=""/>:<span style={{fontSize:12}}>{flagEmoji(p.country)}</span>)}
                 <span style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700}}>{p.position}</span>
                 <span style={{fontSize:11,color:C.muted}}>{p._short}</span>
                 <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color,minWidth:36,textAlign:"right"}}>{p.val}</span>
@@ -1070,7 +1075,10 @@ function SquadsTab({teams,fixtures}){
                       <div style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:5,padding:"3px 7px",fontSize:10,fontWeight:700,minWidth:36,textAlign:"center",flexShrink:0}}>{p.position}</div>
                       <div style={{flex:1}}>
                         <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:5}}>
                           <div style={{fontSize:14,fontWeight:600,color:active?C.text:C.muted}}>{p.name||"Unnamed"}</div>
+                          {p.country&&(nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:22,height:15,borderRadius:2,objectFit:"cover",flexShrink:0}} alt=""/>:<span style={{fontSize:12}}>{flagEmoji(p.country)}</span>)}
+                        </div>
                           {(p.roles||[]).map(r=>{const role=ROLES.find(x=>x.id===r);return role?<span key={r} style={{fontSize:9,fontWeight:700,color:role.color,background:role.color+"22",border:`1px solid ${role.color}44`,borderRadius:3,padding:"1px 5px"}}>{role.short}</span>:null;})}
                           {susp&&<span style={{fontSize:9,fontWeight:700,color:C.gold,background:`${C.gold}22`,border:`1px solid ${C.gold}44`,borderRadius:3,padding:"1px 5px"}}>SUSP</span>}
                           {p.injured&&<span style={{fontSize:9,fontWeight:700,color:C.red,background:`${C.red}22`,border:`1px solid ${C.red}44`,borderRadius:3,padding:"1px 5px"}}>INJ</span>}
@@ -3408,6 +3416,7 @@ function CareerTeamsView({career}){
                     <div key={p.id} style={{display:'flex',alignItems:'center',gap:8,padding:'5px 0',borderBottom:`1px solid ${C.border}`}}>
                       <div style={{background:posColor(p.position)+'22',color:posColor(p.position),borderRadius:3,padding:'1px 5px',fontSize:9,fontWeight:700,width:28,textAlign:'center',flexShrink:0}}>{p.position}</div>
                       <div style={{flex:1,fontSize:12,color:p.injured||p.suspended?C.muted:C.text,fontWeight:600}}>{p.name}{p.injured?' 🤕':''}{p.suspended?' 🟥':''}</div>
+                      {p.country&&(nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:20,height:14,borderRadius:2,objectFit:"cover",flexShrink:0}} alt=""/>:<span style={{fontSize:11}}>{flagEmoji(p.country)}</span>)}
                       <div style={{fontSize:11,color:C.muted}}>{q}</div>
                       <div style={{fontSize:10,color:C.muted}}>Age {p.age||25}</div>
                       <div style={{fontSize:10,color:C.gold}}>£{playerValue(p,t)}M</div>
