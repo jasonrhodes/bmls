@@ -1268,7 +1268,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
   return(
     <div>
       <div style={{display:"flex",gap:8,marginBottom:24}}>
-        {["teams","fixtures","transfers","season"].map(v=>(
+        {["teams","countries","fixtures","transfers","season"].map(v=>(
           <button key={v} onClick={()=>{setView(v);setEditTeam(null);setEditFix(null);}} style={{background:view===v?C.accent:C.card,color:view===v?C.white:C.sub,border:"none",borderRadius:6,padding:"8px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",textTransform:"capitalize"}}>{v}</button>
         ))}
       </div>
@@ -1373,6 +1373,58 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
           </div>
         </div>
       )}
+      {view==="countries"&&(()=>{
+        const allPlayers=teams.flatMap(t=>t.players.filter(p=>p.name).map(p=>({...p,_teamId:t.id,_teamName:t.name,_teamColor:t.color})));
+        const missing=allPlayers.filter(p=>!p.country);
+        const setCountry=(teamId,playerId,val)=>{
+          const nt=teams.map(t=>t.id!==teamId?t:{...t,players:t.players.map(p=>p.id!==playerId?p:{...p,country:val})});
+          setTeams(nt);syncTeams(nt);
+        };
+        return(
+          <div>
+            <SLabel>Player Countries</SLabel>
+            {missing.length===0&&<div style={{color:C.green,fontSize:13,marginBottom:12}}>✓ All players have a country set.</div>}
+            {missing.length>0&&<div style={{fontSize:12,color:C.muted,marginBottom:16}}>{missing.length} player{missing.length!==1?'s':''} without a country</div>}
+            {missing.map(p=>(
+              <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:C.card,border:`1px solid ${C.border}`,borderRadius:8,marginBottom:6}}>
+                <div style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700,flexShrink:0}}>{p.position}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,color:C.text}}>{p.name}</div>
+                  <div style={{fontSize:10,color:C.muted}}>{p._teamName}</div>
+                </div>
+                <input
+                  defaultValue=""
+                  placeholder="Country…"
+                  onBlur={e=>{if(e.target.value.trim())setCountry(p._teamId,p.id,e.target.value.trim());}}
+                  onKeyDown={e=>{if(e.key==='Enter'&&e.target.value.trim()){setCountry(p._teamId,p.id,e.target.value.trim());e.target.blur();}}}
+                  style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 10px",color:C.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none",width:130,flexShrink:0}}
+                />
+              </div>
+            ))}
+            {allPlayers.filter(p=>p.country).length>0&&(
+              <div style={{marginTop:20}}>
+                <SLabel>Countries Set</SLabel>
+                {allPlayers.filter(p=>p.country).map(p=>(
+                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:C.card,border:`1px solid ${C.border}`,borderRadius:8,marginBottom:6}}>
+                    <div style={{background:posColor(p.position)+"22",color:posColor(p.position),borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700,flexShrink:0}}>{p.position}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,color:C.text}}>{p.name}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{p._teamName}</div>
+                    </div>
+                    {nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:24,height:17,borderRadius:2,objectFit:"cover"}} alt=""/>:<span style={{fontSize:14}}>{flagEmoji(p.country)}</span>}
+                    <input
+                      defaultValue={p.country}
+                      onBlur={e=>{if(e.target.value.trim()!==p.country)setCountry(p._teamId,p.id,e.target.value.trim());}}
+                      onKeyDown={e=>{if(e.key==='Enter'){setCountry(p._teamId,p.id,e.target.value.trim());e.target.blur();}}}
+                      style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 10px",color:C.text,fontSize:12,fontFamily:"'DM Sans',sans-serif",outline:"none",width:130,flexShrink:0}}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
       {view==="fixtures"&&!editFix&&(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
