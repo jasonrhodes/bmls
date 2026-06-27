@@ -839,7 +839,7 @@ function StatsTab({teams,fixtures}){
       const v=variance(p.id)*teamFactor;
       const appRate=0.85;
       const gpg=pos==='FWD'?sc*sc*1.45:pos==='MDF'?atk*atk*0.55:pos==='DEF'?(wide?sc*sc*0.18:sc*0.04):0;
-      const apg=pos==='FWD'?Math.max(0.04,0.28-sc*0.22):pos==='MDF'?Math.max(0.20,0.65-atk*0.35):pos==='DEF'?(wide?Math.max(0.05,0.30-sc*0.20):sc*0.06):0;
+      const apg=pos==='FWD'?0.06+sc*0.16:pos==='MDF'?0.15+atk*0.38:pos==='DEF'?(wide?0.08+sc*0.14:sc*0.06):0;
       return{playerId:p.id,name:p.name,position:pos,teamId:t.id,teamName:t.name,teamColor:t.color,
         goals:Math.round(gpg*appRate*v*gamesPerTeam),
         assists:Math.round(apg*appRate*v*gamesPerTeam),
