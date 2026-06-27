@@ -127,6 +127,44 @@ function pickWCLineup(nation){
   const starterIds=new Set([...(gk?[gk.id]:[]),...starters.map(p=>p.id)]);
   return{formation,gk,starters,bench:ps.filter(p=>!starterIds.has(p.id))};
 }
+function lineupRatingsFromSlots(starters){
+  const fwds=starters.filter(p=>p._slot==='FWD'),defs=starters.filter(p=>p._slot==='DEF'),mdfs=starters.filter(p=>p._slot==='MDF');
+  const fwdAvg=fwds.length?fwds.reduce((s,p)=>s+(p.score||5),0)/fwds.length:null;
+  const defAvg=defs.length?defs.reduce((s,p)=>s+(p.score||5),0)/defs.length:null;
+  let atkP=[...fwds.map(p=>p.score||5)];
+  mdfs.forEach(p=>{if(fwdAvg===null||(p.mdfAtkScore||5)>fwdAvg)atkP.push(p.mdfAtkScore||5);});
+  const atk=Math.min(10,Math.round((atkP.length?atkP.reduce((a,b)=>a+b,0)/atkP.length:5)*depthMultiplier(fwds.length)));
+  let defP=[...defs.map(p=>p.score||5)];
+  mdfs.forEach(p=>{if(defAvg===null||(p.mdfDefScore||5)>defAvg)defP.push(p.mdfDefScore||5);});
+  const def=Math.min(10,Math.round((defP.length?defP.reduce((a,b)=>a+b,0)/defP.length:5)*depthMultiplier(defs.length)));
+  return{atk,def};
+}
+function buildWCCareerLineup(nation,savedLineup){
+  if(!savedLineup||!savedLineup.length)return pickWCLineup(nation);
+  const seen=new Set();
+  const ps=nation.players.filter(p=>p.name&&p.name.trim()&&p.id!=null&&!seen.has(p.id)&&seen.add(p.id)).map(p=>({...p,name:p.name.trim(),position:(p.position||'').trim()}));
+  const savedSet=new Set(savedLineup);
+  const chosen=ps.filter(p=>savedSet.has(p.id));
+  const bench=ps.filter(p=>!savedSet.has(p.id));
+  if(!chosen.length)return pickWCLineup(nation);
+  let gk=chosen.find(p=>p.position==='GK')||null;
+  const out=gk?chosen.filter(p=>p.id!==gk.id):chosen;
+  const slotScore=(p,slot)=>{
+    if(slot==='DEF')return p.position==='DEF'&&!p.wide?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.7:p.position==='MDF'?(p.mdfDefScore||5)*0.6:(p.score||5)*0.2;
+    if(slot==='MDF')return p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:p.position==='FWD'?(p.score||5)*0.55:p.position==='DEF'?(p.score||5)*0.35:(p.score||5)*0.2;
+    return p.position==='FWD'?(p.score||5):p.position==='DEF'&&p.wide?(p.score||5)*0.8:p.position==='MDF'?(p.mdfAtkScore||5)*0.65:(p.score||5)*0.2;
+  };
+  const makeSlots=f=>{const s=[];for(let i=0;i<f.def;i++)s.push('DEF');for(let i=0;i<f.mdf;i++)s.push('MDF');for(let i=0;i<f.fwd;i++)s.push('FWD');return s;};
+  const bestAssign=(players,slots)=>{
+    const n=Math.min(players.length,slots.length);if(!n)return{score:0,picks:[]};
+    const used=new Array(players.length).fill(false);let bestScore=-Infinity,bestPicks=null;const cur=[];
+    const go=(si,score)=>{if(si===n){if(score>bestScore){bestScore=score;bestPicks=[...cur];}return;}for(let pi=0;pi<players.length;pi++){if(!used[pi]){used[pi]=true;cur.push(pi);go(si+1,score+slotScore(players[pi],slots[si]));used[pi]=false;cur.pop();}}};
+    go(0,0);return{score:bestScore,picks:bestPicks||[]};
+  };
+  let best=null;
+  for(const f of WC_FORMATIONS){const slots=makeSlots(f);const{score,picks}=bestAssign(out,slots);const total=score+(f.bias||0);if(!best||total>best.total)best={total,formation:f,starters:picks.map((pi,si)=>({...out[pi],_slot:slots[si]}));};}
+  return{formation:best?.formation||WC_FORMATIONS[0],gk,starters:best?.starters||[],bench};
+}
 
 function simWCMatch(home,away){
   const hr=lineupRatings(home),ar=lineupRatings(away);
@@ -158,12 +196,13 @@ function simWCKnockout(home,away){
   if(r.hGoals===r.aGoals)return Math.random()<0.5?{...r,hGoals:r.hGoals+1,et:true}:{...r,aGoals:r.aGoals+1,et:true};
   return r;
 }
-function simWCMatchFull(home,away,{knockout=false}={}){
-  const hLU=pickWCLineup(home),aLU=pickWCLineup(away);
+function simWCMatchFull(home,away,{knockout=false,homeLineup=null,awayLineup=null}={}){
+  const hLU=homeLineup||pickWCLineup(home),aLU=awayLineup||pickWCLineup(away);
   const hStarters=[...(hLU.gk?[{...hLU.gk,_slot:'GK'}]:[]),...hLU.starters];
   const aStarters=[...(aLU.gk?[{...aLU.gk,_slot:'GK'}]:[]),...aLU.starters];
   const hBench=[...hLU.bench],aBench=[...aLU.bench];
-  const hr=lineupRatings(home),ar=lineupRatings(away);
+  const hr=homeLineup?lineupRatingsFromSlots(hLU.starters):lineupRatings(home);
+  const ar=awayLineup?lineupRatingsFromSlots(aLU.starters):lineupRatings(away);
   const hxg=Math.max(0.1,hr.atk*0.14+(10-ar.def)*0.09+0.25);
   const axg=Math.max(0.1,ar.atk*0.14+(10-hr.def)*0.09+0.25);
   const pois=λ=>{const L=Math.exp(-Math.min(λ,8));let k=0,p=1;do{k++;p*=Math.random();}while(p>L);return k-1;};
@@ -1315,7 +1354,20 @@ function CareerTab({nations,wcMeta,groupMatches}){
   const eliminated=groupComplete&&!qualified;
   const[hi,setHi]=useState('');const[ai,setAi]=useState('');
   const[careerSim,setCareerSim]=useState(null);
+  const[koIsHome,setKoIsHome]=useState(career.koIsHome??null);
+  const[savedLineup,setSavedLineup]=useState(career.savedLineup||[]);
   const inp={background:C.surface,border:`1px solid ${C.border}`,borderRadius:5,padding:'5px 0',color:C.text,fontSize:15,fontFamily:"'Bebas Neue',sans-serif",outline:'none',width:'100%',textAlign:'center'};
+  useEffect(()=>{
+    if(!qualified||koPhase==='champion'||koPhase==='eliminated')return;
+    const updates={};
+    if(!koOpponent){
+      const pool=named.filter(n=>n.id!==career.nationId);
+      const nextOpp=pool[Math.floor(Math.random()*pool.length)]?.id;
+      if(nextOpp){setKoOpponent(nextOpp);updates.koOpponent=nextOpp;}
+    }
+    if(koIsHome===null){const ih=Math.random()<0.5;setKoIsHome(ih);updates.koIsHome=ih;}
+    if(Object.keys(updates).length)saveCareer({...career,...updates});
+  },[qualified,koPhase,koOpponent,koIsHome]);
   const playMatch=(matchIdx,isHome,oppId)=>{
     const mid=`career_gm_${myGroup.id}${matchIdx+1}`;
     if(careerResults[mid])return;
@@ -1354,7 +1406,8 @@ function CareerTab({nations,wcMeta,groupMatches}){
     const hN=isHome?myNation:nations.find(n=>n.id===oppId);
     const aN=isHome?nations.find(n=>n.id===oppId):myNation;
     if(!hN||!aN)return;
-    const result=simWCMatchFull(hN,aN);
+    const myLU=savedLineup.length>=5?buildWCCareerLineup(myNation,savedLineup):null;
+    const result=simWCMatchFull(hN,aN,{homeLineup:isHome?myLU:null,awayLineup:isHome?null:myLU});
     setCareerSim({matchId:mid,hNation:hN,aNation:aN,result,type:'group',pendingUpdates});
   };
   const applyGroupSim=()=>{
@@ -1371,8 +1424,9 @@ function CareerTab({nations,wcMeta,groupMatches}){
   const[koOpponent,setKoOpponent]=useState(career.koOpponent||null);
   const saveKo=(phase,result,nextOpp,nextPhase)=>{
     const kr={...koResults,[phase]:result};
-    setKoResults(kr);setKoOpponent(nextOpp||null);setKoPhase(nextPhase||phase);
-    saveCareer({...career,koPhase:nextPhase||phase,koResults:kr,koOpponent:nextOpp||null});
+    const nextIH=nextOpp?Math.random()<0.5:null;
+    setKoResults(kr);setKoOpponent(nextOpp||null);setKoPhase(nextPhase||phase);setKoIsHome(nextIH);
+    saveCareer({...career,koPhase:nextPhase||phase,koResults:kr,koOpponent:nextOpp||null,koIsHome:nextIH});
   };
   const doKoMatch=(isHome,oppNation)=>{
     const hv=parseInt(koHi),av=parseInt(koAi);
@@ -1388,7 +1442,8 @@ function CareerTab({nations,wcMeta,groupMatches}){
     const hN=isHome?myNation:oppNation;
     const aN=isHome?oppNation:myNation;
     if(!hN||!aN)return;
-    const result=simWCMatchFull(hN,aN,{knockout:true});
+    const myLU=savedLineup.length>=5?buildWCCareerLineup(myNation,savedLineup):null;
+    const result=simWCMatchFull(hN,aN,{knockout:true,homeLineup:isHome?myLU:null,awayLineup:isHome?null:myLU});
     setCareerSim({matchId:koPhase,hNation:hN,aNation:aN,result,type:'ko',isHome,oppNation});
   };
   const applyKoResult=(res,isHome)=>{
@@ -1411,17 +1466,26 @@ function CareerTab({nations,wcMeta,groupMatches}){
         </div>
         <button onClick={()=>{if(confirm('Abandon career?'))resetCareer();}} style={{background:'none',border:'none',color:C.muted,fontSize:11,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>Abandon</button>
       </div>
-      {/* Squad */}
-      <div style={{marginBottom:20}}>
-        <SLabel>Your Squad</SLabel>
+      {/* Lineup Picker */}
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:'12px 14px',marginBottom:20}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6}}>
+          <SLabel style={{margin:0}}>Starting Lineup</SLabel>
+          <span style={{fontSize:11,fontWeight:700,color:savedLineup.length===6?C.green:C.gold}}>{savedLineup.length}/6</span>
+        </div>
+        <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Tap to pick your 6 starters. Their scores drive ATK/DEF and who scores.</div>
         {['GK','DEF','MDF','FWD'].map(pos=>{const ps=myNation.players.filter(p=>p.position===pos&&p.name);if(!ps.length)return null;return(
           <div key={pos} style={{marginBottom:8}}>
             <div style={{fontSize:9,color:posColor(pos),fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:4}}>{pos}</div>
             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-              {ps.map(p=><div key={p.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:6,padding:'5px 10px',fontSize:12,color:C.text}}>{p.name}</div>)}
+              {ps.map(p=>{const inLU=savedLineup.includes(p.id);const tog=()=>{const nl=inLU?savedLineup.filter(id=>id!==p.id):savedLineup.length>=6?[...savedLineup.slice(1),p.id]:[...savedLineup,p.id];setSavedLineup(nl);saveCareer({...career,savedLineup:nl});};return(
+                <div key={p.id} onClick={tog} style={{background:inLU?`${posColor(pos)}18`:C.surface,border:`1px solid ${inLU?posColor(pos):C.border}`,borderRadius:6,padding:'5px 10px',fontSize:12,color:inLU?posColor(pos):C.muted,cursor:'pointer',fontWeight:inLU?700:400,userSelect:'none'}}>
+                  {p.name}{inLU&&<span style={{fontSize:9,marginLeft:4}}>✓</span>}
+                </div>
+              );})}
             </div>
           </div>
         );})}
+        {savedLineup.length===6?(()=>{const lu=buildWCCareerLineup(myNation,savedLineup);const r=lineupRatingsFromSlots(lu.starters);return<div style={{fontSize:11,color:C.muted,marginTop:6,borderTop:`1px solid ${C.border}44`,paddingTop:6}}>{lu.formation?.name||'?'} · <span style={{color:C.red}}>ATK {r.atk}</span> · <span style={{color:C.green}}>DEF {r.def}</span></div>;})():<div style={{fontSize:11,color:C.gold,marginTop:6}}>⚠ Select {6-savedLineup.length} more player{6-savedLineup.length!==1?'s':''}</div>}
       </div>
       {/* Group stage */}
       {myGroup?(
@@ -1509,7 +1573,7 @@ function CareerTab({nations,wcMeta,groupMatches}){
         const phaseLabel={qf:'Quarter Final',sf:'Semi Final',final:'Final'}[koPhase]||koPhase;
         const oppNation=koOpponent?nations.find(n=>n.id===koOpponent):null;
         const prevResult=koResults[koPhase];
-        const isHome=Math.random()<0.5;
+        const isHome=koIsHome??true;
         if(prevResult){
           const myScore=isHome?prevResult.homeScore:prevResult.awayScore;
           const oppScore=isHome?prevResult.awayScore:prevResult.homeScore;
@@ -1523,9 +1587,7 @@ function CareerTab({nations,wcMeta,groupMatches}){
           );
         }
         const canSave=koHi!==''&&koAi!==''&&!isNaN(parseInt(koHi))&&!isNaN(parseInt(koAi))&&parseInt(koHi)!==parseInt(koAi);
-        if(!oppNation&&!koOpponent){
-          const nextOpp=named.filter(n=>n.id!==career.nationId)[Math.floor(Math.random()*(named.length-1))]?.id;
-          if(nextOpp)saveCareer({...career,koOpponent:nextOpp});
+        if(!oppNation){
           return<div style={{fontSize:12,color:C.muted,padding:20,textAlign:'center'}}>Setting up {phaseLabel}...</div>;
         }
         return(
@@ -1549,8 +1611,8 @@ function CareerTab({nations,wcMeta,groupMatches}){
             </div>
             <div style={{fontSize:10,color:C.muted,textAlign:'center',marginBottom:8}}>No draws in knockout · Enter scores or simulate</div>
             <div style={{display:'flex',gap:6}}>
-              <Btn onClick={()=>doKoMatch(true,oppNation)} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
-              <Btn onClick={()=>startKoSim(true,oppNation)} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
+              <Btn onClick={()=>doKoMatch(isHome,oppNation)} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save</Btn>
+              <Btn onClick={()=>startKoSim(isHome,oppNation)} variant="secondary" style={{flex:1,fontSize:11}}>▶ Sim</Btn>
             </div>
             {careerSim?.type==='ko'&&(
               <WCMatchSimPanel
