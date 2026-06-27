@@ -102,16 +102,26 @@ function checkBetResult(bet,fixture){
 }
 
 const DEFAULT_SETTINGS={
-  fantasyBudget:45,
+  fantasyBudget:60,
   points:{goal:6,assist:3,appearance:1,gkCleanSheet:4,penSave:5,ratingHigh:2,ratingLow:-1,yellow:-1,red:-3,mwTopBonus:2},
   playerCosts:{},
 };
 
+function ratingToCost(score){
+  if(score>=9.5)return 10.0;
+  if(score>=8.5)return 9.0;
+  if(score>=7.5)return 7.5;
+  if(score>=6.5)return 6.0;
+  if(score>=5.5)return 5.0;
+  if(score>=4.5)return 4.0;
+  return 3.0;
+}
+
 function fantasyPlayerCost(p,settings=DEFAULT_SETTINGS){
   const overrides=settings.playerCosts||{};
   if(overrides[p.id]!=null)return overrides[p.id];
-  if(p.position==='MDF')return Math.round(((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2);
-  return p.score||5;
+  const raw=p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:(p.score||5);
+  return ratingToCost(raw);
 }
 
 function scorePlayer(pid,player,mwF,pts,top5){
@@ -998,7 +1008,7 @@ function ManageTab({teams,settings,onSaveSettings}){
             <div key={pos} style={{marginBottom:12}}>
               <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:posColor(pos),textTransform:"uppercase",marginBottom:6,paddingBottom:4,borderBottom:`1px solid ${posColor(pos)}33`}}>{pos}</div>
               {posPlayers.map(p=>{
-                const auto=p.position==='MDF'?Math.round(((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2):(p.score||5);
+                const raw=p.position==='MDF'?((p.mdfAtkScore||5)+(p.mdfDefScore||5))/2:(p.score||5);const auto=ratingToCost(raw);
                 const custom=local.playerCosts[p.id];
                 return(
                   <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${C.border}22`}}>
