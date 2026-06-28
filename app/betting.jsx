@@ -121,13 +121,14 @@ function generateMarkets(f,home,away,fixtures=[]){
   const chosenPos=sharedPos.length?sharedPos[varSeed%sharedPos.length]:null;
   const homePick=outfieldPool(home,f.homeStarterIds,chosenPos);
   const awayPick=outfieldPool(away,f.awayStarterIds,chosenPos);
-  const homeThreshold=THRESHOLDS[varSeed%THRESHOLDS.length];
-  const awayThreshold=THRESHOLDS[(varSeed+2)%THRESHOLDS.length];
   const ratingMarkets=[
-    {p:homePick[varSeed%homePick.length]||null,team:home,winPct:o.pHome,threshold:homeThreshold},
-    {p:awayPick[(varSeed+1)%awayPick.length]||null,team:away,winPct:o.pAway,threshold:awayThreshold},
-  ].filter(({p})=>p).flatMap(({p,team,winPct,threshold})=>{
+    {p:homePick[varSeed%homePick.length]||null,team:home,winPct:o.pHome,tShift:0},
+    {p:awayPick[(varSeed+1)%awayPick.length]||null,team:away,winPct:o.pAway,tShift:1},
+  ].filter(({p})=>p).flatMap(({p,team,winPct,tShift})=>{
     const avg=playerAvgRating(p.id,p.position,team.id,fixtures)??(p.score||5);
+    const closestIdx=THRESHOLDS.reduce((bi,t,i)=>Math.abs(t-avg)<Math.abs(THRESHOLDS[bi]-avg)?i:bi,0);
+    const shift=((varSeed+tShift)%3)-1;
+    const threshold=THRESHOLDS[Math.max(0,Math.min(THRESHOLDS.length-1,closestIdx+shift))];
     const centre=threshold-(winPct-50)*0.025;
     const pOver=1/(1+Math.exp(-(avg-centre)*1.5));
     return[
