@@ -1596,7 +1596,7 @@ function BettingApp(){
             </div>
             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}>
               <div style={{fontSize:11,color:C.muted}}>{userData.username}</div>
-              <button onClick={()=>{localStorage.removeItem('bmls_betting_username');setScreen('username');setUserData(null);setLeagueData(null);setTab('bet');}} style={{background:"none",border:"none",fontSize:10,color:C.muted,cursor:"pointer",padding:0,fontFamily:"'DM Sans',sans-serif",textDecoration:"underline"}}>Log out</button>
+              <button onClick={async()=>{localStorage.removeItem('bmls_betting_username');setUserData(null);setLeagueData(null);setTab('bet');setScreen('username');const fresh=await loadBMLSState();setAllUserRecords(fresh.fixtures.filter(f=>f.type==='betting_user'));setAllFixtures(fresh.fixtures);}} style={{background:"none",border:"none",fontSize:10,color:C.muted,cursor:"pointer",padding:0,fontFamily:"'DM Sans',sans-serif",textDecoration:"underline"}}>Log out</button>
             </div>
           </div>
         </div>
