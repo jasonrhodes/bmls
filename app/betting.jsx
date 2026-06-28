@@ -599,7 +599,13 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   };
 
   const hasStartingGK=localStarting.some(id=>allPlayers.find(p=>p.id===id)?.position==='GK');
-  const canLock=localStarting.length===6&&hasStartingGK&&!!localCaptain&&!isLocked;
+  const VALID_FORMATIONS=[{DEF:2,MDF:2,FWD:1},{DEF:2,MDF:1,FWD:2},{DEF:3,MDF:1,FWD:1},{DEF:2,MDF:3,FWD:0}];
+  const startingDef=localStarting.filter(id=>allPlayers.find(p=>p.id===id)?.position==='DEF').length;
+  const startingMdf=localStarting.filter(id=>allPlayers.find(p=>p.id===id)?.position==='MDF').length;
+  const startingFwd=localStarting.filter(id=>allPlayers.find(p=>p.id===id)?.position==='FWD').length;
+  const validFormation=localStarting.length===6&&VALID_FORMATIONS.some(f=>f.DEF===startingDef&&f.MDF===startingMdf&&f.FWD===startingFwd);
+  const formationLabel=localStarting.length===6?`${startingDef}-${startingMdf}-${startingFwd}`:'—';
+  const canLock=localStarting.length===6&&hasStartingGK&&!!localCaptain&&validFormation&&!isLocked;
 
   const lockLineup=async()=>{
     if(!canLock)return;
@@ -771,13 +777,17 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
           <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
             <div>
               <div style={{fontSize:9,color:C.muted,letterSpacing:1}}>MW {currentMW} STATUS</div>
-              <div style={{fontSize:13,fontWeight:700,color:isLocked?C.green:localStarting.length===6?C.gold:C.muted}}>{isLocked?'Locked ✓':localStarting.length===6?'Ready to Lock':`Starting: ${localStarting.length}/6`}</div>
+              <div style={{fontSize:13,fontWeight:700,color:isLocked?C.green:canLock?C.gold:C.muted}}>{isLocked?'Locked ✓':canLock?'Ready to Lock':localStarting.length===6?'Invalid formation':`Starting: ${localStarting.length}/6`}</div>
+            </div>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontSize:9,color:C.muted,letterSpacing:1}}>FORMATION</div>
+              <div style={{fontSize:13,fontWeight:700,color:validFormation?C.green:localStarting.length===6?C.red:C.muted}}>{formationLabel}</div>
             </div>
             <div style={{textAlign:"right"}}>
               <div style={{fontSize:9,color:C.muted}}>Budget left</div>
               <div style={{fontSize:13,fontWeight:700,color:C.text}}>{BUDGET-squadBudget}</div>
             </div>
-            <div style={{fontSize:10,color:C.muted}}>Free transfers: <span style={{color:C.gold,fontWeight:700}}>{freeTransfers}</span></div>
+            <div style={{fontSize:10,color:C.muted,width:"100%"}}>Free transfers: <span style={{color:C.gold,fontWeight:700}}>{freeTransfers}</span>{localStarting.length===6&&!validFormation&&<span style={{color:C.red,marginLeft:8}}>· Must use 2-2-1, 2-1-2, 3-1-1 or 2-3</span>}</div>
           </div>
 
           {/* Boosts */}
