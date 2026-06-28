@@ -60,7 +60,28 @@ function calcMatchRating(ps,position,result){
   return Math.min(10,Math.max(1,+r.toFixed(1)));
 }
 
-function generateMarkets(f,home,away){
+function playerGoalRate(pid,teamId,fixtures){
+  const played=fixtures.filter(f=>f.played&&(f.homeId===teamId||f.awayId===teamId));
+  const games=played.filter(f=>(f.playerStats||[]).some(ps=>ps.playerId===pid));
+  if(!games.length)return null;
+  const goals=games.reduce((s,f)=>s+((f.playerStats||[]).find(ps=>ps.playerId===pid)?.goals||0),0);
+  return goals/games.length;
+}
+
+function playerAvgRating(pid,position,teamId,fixtures){
+  const played=fixtures.filter(f=>f.played&&(f.homeId===teamId||f.awayId===teamId));
+  const ratings=played.map(f=>{
+    const ps=(f.playerStats||[]).find(ps=>ps.playerId===pid);
+    if(!ps)return null;
+    const isHome=f.homeId===teamId;
+    const result=isHome?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');
+    return calcMatchRating(ps,position,result);
+  }).filter(r=>r!==null);
+  if(!ratings.length)return null;
+  return ratings.reduce((s,r)=>s+r,0)/ratings.length;
+}
+
+function generateMarkets(f,home,away,fixtures=[]){
   const o=calcOdds(home,away);
   const tot=o.hxg+o.axg;
   const pOver15=1-Math.exp(-tot)*(1+tot);
@@ -68,6 +89,30 @@ function generateMarkets(f,home,away){
   const mg=1.07;
   const toOdds=p=>Math.max(1.05,+((mg/Math.max(0.05,Math.min(0.95,p)))).toFixed(2));
   const pBtts=(1-Math.exp(-o.hxg))*(1-Math.exp(-o.axg));
+
+  const posBase=pos=>pos==='FWD'?0.35:pos==='MDF'?0.15:0.05;
+  const buildScorerMarkets=(team,xg)=>{
+    const xgFactor=(xg||1.5)/2.0;
+    return team.players.filter(p=>p.name&&p.position!=='GK')
+      .map(p=>{
+        const rate=playerGoalRate(p.id,team.id,fixtures);
+        const prob=rate!==null?Math.min(0.9,rate):posBase(p.position)*xgFactor;
+        return{market:`scorer_${p.id}`,label:`${p.name} to Score`,group:'Anytime Goalscorer',odds:toOdds(prob),playerId:p.id,playerPosition:p.position,playerTeamId:team.id,_prob:prob};
+      }).sort((a,b)=>b._prob-a._prob).slice(0,3).map(({_prob,...m})=>m);
+  };
+
+  const buildRatingMarkets=(team)=>{
+    return team.players.filter(p=>p.name)
+      .map(p=>{
+        const avg=playerAvgRating(p.id,p.position,team.id,fixtures)??(p.score||5);
+        const pOver=avg>=8.5?0.75:avg>=7.5?0.55:avg>=6.5?0.35:0.2;
+        return{p,avg,pOver,teamId:team.id};
+      }).sort((a,b)=>b.avg-a.avg).slice(0,2).flatMap(({p,pOver,teamId})=>[
+        {market:`rating_over_${p.id}`,label:`${p.name} Rating 7.5+`,group:'Player Rating',odds:toOdds(pOver),playerId:p.id,playerPosition:p.position,playerTeamId:teamId},
+        {market:`rating_under_${p.id}`,label:`${p.name} Under 7.5`,group:'Player Rating',odds:toOdds(1-pOver),playerId:p.id,playerPosition:p.position,playerTeamId:teamId},
+      ]);
+  };
+
   return[
     {market:'home_win',label:'Home Win',group:'Match Result',odds:o.home},
     {market:'draw',label:'Draw',group:'Match Result',odds:o.draw},
@@ -80,12 +125,28 @@ function generateMarkets(f,home,away){
     {market:'btts_no',label:'Clean Sheet Either Side',group:'BTTS',odds:toOdds(1-pBtts)},
     {market:'home_win_2plus',label:`${home.name} Win by 2+`,group:'Margin',odds:toOdds(o.pHome/100*0.45)},
     {market:'away_win_2plus',label:`${away.name} Win by 2+`,group:'Margin',odds:toOdds(o.pAway/100*0.45)},
+    ...buildScorerMarkets(home,o.hxg),
+    ...buildScorerMarkets(away,o.axg),
+    ...buildRatingMarkets(home),
+    ...buildRatingMarkets(away),
   ];
 }
 
 function checkBetResult(bet,fixture){
   if(!fixture.played)return null;
   const h=fixture.homeScore,a=fixture.awayScore,tot=h+a;
+  if(bet.market.startsWith('scorer_')){
+    const ps=(fixture.playerStats||[]).find(ps=>ps.playerId===bet.playerId);
+    return(ps?.goals||0)>0;
+  }
+  if(bet.market.startsWith('rating_over_')||bet.market.startsWith('rating_under_')){
+    const ps=(fixture.playerStats||[]).find(ps=>ps.playerId===bet.playerId);
+    if(!ps)return null;
+    const isHome=fixture.homeId===bet.playerTeamId;
+    const result=isHome?(h>a?'win':h<a?'loss':'draw'):(a>h?'win':a<h?'loss':'draw');
+    const rating=calcMatchRating(ps,bet.playerPosition,result);
+    return bet.market.startsWith('rating_over_')?rating>=7.5:rating<7.5;
+  }
   switch(bet.market){
     case 'home_win':return h>a;
     case 'draw':return h===a;
@@ -338,7 +399,7 @@ function BettingTab({teams,fixtures,userData,onPlaceBet}){
 
   if(!upcoming.length)return<div style={{padding:32,textAlign:"center",color:C.muted,fontSize:13}}>No fixtures to bet on for Match Week {currentMW}.</div>;
 
-  const groups=['Match Result','Goals','BTTS','Margin'];
+  const groups=['Match Result','Goals','BTTS','Margin','Anytime Goalscorer','Player Rating'];
 
   return(
     <div>
@@ -352,7 +413,7 @@ function BettingTab({teams,fixtures,userData,onPlaceBet}){
             const h=teams.find(t=>t.id===f.homeId),a=teams.find(t=>t.id===f.awayId);
             if(!h||!a)return null;
             const isOpen=expanded===f.id;
-            const markets=generateMarkets(f,h,a);
+            const markets=generateMarkets(f,h,a,fixtures);
             const pred=predictMatch(h,a);
             const openBets=(userData.bets||[]).filter(b=>b.fixtureId===f.id&&b.status==='open');
             return(
@@ -410,7 +471,7 @@ function BettingTab({teams,fixtures,userData,onPlaceBet}){
                                       <button
                                         onClick={()=>{
                                           if(stake<1||stake>userData.balance)return;
-                                          onPlaceBet({id:Date.now()+Math.random(),fixtureId:f.id,homeTeamName:h.name,awayTeamName:a.name,market:m.market,label:m.label,odds:m.odds,stake,status:'open',payout:null,placedAt:new Date().toISOString(),matchWeek:f.matchWeek||null});
+                                          onPlaceBet({id:Date.now()+Math.random(),fixtureId:f.id,homeTeamName:h.name,awayTeamName:a.name,market:m.market,label:m.label,odds:m.odds,stake,status:'open',payout:null,placedAt:new Date().toISOString(),matchWeek:f.matchWeek||null,playerId:m.playerId||null,playerPosition:m.playerPosition||null,playerTeamId:m.playerTeamId||null});
                                           setSelectedMarket(prev=>({...prev,[key]:null}));
                                           setStakes(prev=>({...prev,[key]:''}));
                                         }}
