@@ -442,6 +442,9 @@ function calcOdds(home,away){
   return{home:+((mg/(pH/n))).toFixed(2),draw:+((mg/(pD/n))).toFixed(2),away:+((mg/(pA/n))).toFixed(2),pHome:Math.round(pH/n*100),pDraw:Math.round(pD/n*100),pAway:Math.round(pA/n*100)};
 }
 
+const PRIZE_MONEY=[50,35,25,20,15,12,10,8,5,3,1,0.5]; // £M by position 1-12
+const fmtPrize=p=>p>=1?`£${p}M`:p===0.5?'£500k':`£${p}M`;
+
 function computeTable(teams,fixtures){
   const rows=teams.filter(t=>t.name).map(t=>({...t,p:0,w:0,d:0,l:0,gf:0,ga:0,pts:0,form:[]}));
   fixtures.filter(f=>f.played&&f.homeId&&f.awayId).forEach(f=>{
@@ -929,7 +932,7 @@ function TableTab({teams,fixtures}){
     <div style={{overflowX:"auto"}}>
       <table style={{width:"100%",borderCollapse:"collapse"}}>
         <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
-          {["#","Team","P","W","D","L","GF","GA","GD","Form","Pts"].map(h=>(
+          {["#","Team","P","W","D","L","GF","GA","GD","Form","Pts","Prize"].map(h=>(
             <th key={h} style={{padding:"8px 10px",fontSize:10,fontWeight:700,letterSpacing:1.5,color:C.muted,textAlign:h==="Team"||h==="Form"?"left":"center",textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>
           ))}
         </tr></thead>
@@ -951,6 +954,7 @@ function TableTab({teams,fixtures}){
                 <td style={{padding:"13px 10px",textAlign:"center",fontSize:13,fontWeight:700,color:gd>0?C.green:gd<0?C.red:C.sub}}>{gd>0?`+${gd}`:gd}</td>
                 <td style={{padding:"13px 10px"}}><div style={{display:"flex"}}>{row.form.slice(-5).length===0?<span style={{fontSize:11,color:C.muted}}>—</span>:row.form.slice(-5).map((r,ri)=><FormPip key={ri} r={r}/>)}</div></td>
                 <td style={{padding:"13px 10px",textAlign:"center"}}><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:(isFirst||isPlayoff)?C.gold:C.text}}>{row.pts}</span></td>
+                <td style={{padding:"13px 10px",textAlign:"center",fontSize:11,fontWeight:700,color:i===0?C.gold:i<3?C.green:C.muted,whiteSpace:"nowrap"}}>{fmtPrize(PRIZE_MONEY[i]||0)}</td>
               </tr>
             );
           })}
@@ -2807,12 +2811,20 @@ function agePlayers(teams){
 }
 
 function startNewSeason(career){
-  const agedTeams=agePlayers(career.teams);
+  const played=career.fixtures.filter(f=>f.played);
+  const finalTable=computeTable(career.teams,played);
+  const agedTeams=agePlayers(career.teams).map(t=>{
+    const pos=finalTable.findIndex(r=>r.id===t.id);
+    const prize=pos>=0?(PRIZE_MONEY[pos]||0):0;
+    return prize>0?{...t,careerBudget:(t.careerBudget||0)+prize}:t;
+  });
   const active=agedTeams.filter(t=>t.name&&t.players.length>0);
   const newFixtures=generateCareerFixtures(active.map(t=>t.id));
   const myTeam=agedTeams.find(t=>t.id===career.myTeamId);
+  const myPos=finalTable.findIndex(r=>r.id===career.myTeamId);
+  const myPrize=myPos>=0?(PRIZE_MONEY[myPos]||0):0;
   const newCpuBids=genPreseasonBids(agedTeams,career.myTeamId,myTeam);
-  const prevSeason={season:career.season||1,playerStats:career.playerStats,transfers:career.transfers,fixtures:career.fixtures};
+  const prevSeason={season:career.season||1,playerStats:career.playerStats,transfers:career.transfers,fixtures:career.fixtures,prize:myPrize,position:myPos+1};
   return{
     ...career,
     teams:agedTeams,
@@ -2850,7 +2862,8 @@ function CareerHubView({career,onNav,onNewSeason,onStartPlayoffs}){
         <div style={{background:`${C.gold}22`,border:`1px solid ${C.gold}44`,borderRadius:10,padding:16,marginBottom:12,textAlign:'center'}}>
           <div style={{fontSize:10,color:C.gold,fontWeight:700,letterSpacing:2,textTransform:'uppercase',marginBottom:4}}>Season {career.season||1}</div>
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:C.gold,letterSpacing:2}}>Season Complete</div>
-          <div style={{fontSize:13,color:C.muted,marginTop:4,marginBottom:14}}>Final position: {myPos}{myPos===1?' 🏆':myPos<=3?' 🥉':''} · Morale and squad carry over</div>
+          <div style={{fontSize:13,color:C.muted,marginTop:4,marginBottom:8}}>Final position: {myPos}{myPos===1?' 🏆':myPos<=3?' 🥉':''} · Morale and squad carry over</div>
+          {(()=>{const pos=myPos-1;const prize=PRIZE_MONEY[pos>=0?pos:11]||0;return(<div style={{background:`${C.green}18`,border:`1px solid ${C.green}44`,borderRadius:7,padding:'8px 14px',marginBottom:12,display:'flex',justifyContent:'space-between',alignItems:'center'}}><span style={{fontSize:11,color:C.green,fontWeight:700,letterSpacing:1}}>PRIZE MONEY AWARDED</span><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:C.green}}>{fmtPrize(prize)}</span></div>);})()}
           {(()=>{
             const allPl=career.teams.flatMap(t=>t.players.map(p=>({...p,_team:t})));
             const wSt=allPl.filter(p=>career.playerStats?.[p.id]);
@@ -2999,7 +3012,7 @@ function CareerTableView({career}){
       <div style={{overflowX:'auto'}}>
         <table style={{width:'100%',borderCollapse:'collapse'}}>
           <thead><tr style={{borderBottom:`1px solid ${C.border}`}}>
-            {['#','Team','P','W','D','L','GD','Pts'].map(h=><th key={h} style={{padding:'8px 6px',fontSize:10,fontWeight:700,letterSpacing:1.5,color:C.muted,textAlign:h==='Team'?'left':'center',textTransform:'uppercase',whiteSpace:'nowrap'}}>{h}</th>)}
+            {['#','Team','P','W','D','L','GD','Pts','Prize'].map(h=><th key={h} style={{padding:'8px 6px',fontSize:10,fontWeight:700,letterSpacing:1.5,color:C.muted,textAlign:h==='Team'?'left':'center',textTransform:'uppercase',whiteSpace:'nowrap'}}>{h}</th>)}
           </tr></thead>
           <tbody>
             {table.map((row,i)=>{
@@ -3011,6 +3024,7 @@ function CareerTableView({career}){
                   {[row.p,row.w,row.d,row.l].map((v,j)=><td key={j} style={{padding:'11px 6px',textAlign:'center',fontSize:12,color:C.sub}}>{v}</td>)}
                   <td style={{padding:'11px 6px',textAlign:'center',fontSize:12,fontWeight:700,color:gd>0?C.green:gd<0?C.red:C.sub}}>{gd>0?`+${gd}`:gd}</td>
                   <td style={{padding:'11px 6px',textAlign:'center'}}><span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:(isFirst||isPlayoff)?C.gold:C.text}}>{row.pts}</span></td>
+                  <td style={{padding:'11px 6px',textAlign:'center',fontSize:11,fontWeight:700,color:i===0?C.gold:i<3?C.green:C.muted,whiteSpace:'nowrap'}}>{fmtPrize(PRIZE_MONEY[i]||0)}</td>
                 </tr>
               );
             })}
