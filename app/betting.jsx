@@ -97,8 +97,9 @@ function generateMarkets(f,home,away,fixtures=[]){
   ];
   const scorerMarkets=allOutfield.map(p=>{
     const xgFactor=(p._xg||1.5)/2.0;
+    const ratingScale=(p.score||5)/7;
     const rate=playerGoalRate(p.id,p._team.id,fixtures);
-    const prob=rate!==null?Math.min(0.9,rate):posBase(p.position)*xgFactor;
+    const prob=rate!==null?Math.min(0.9,rate):posBase(p.position)*ratingScale*xgFactor;
     return{market:`scorer_${p.id}`,label:`${p.name} to Score`,group:'Anytime Goalscorer',odds:toOdds(prob),playerId:p.id,playerPosition:p.position,playerTeamId:p._team.id,_prob:prob};
   }).sort((a,b)=>b._prob-a._prob).slice(0,4).map(({_prob,...m})=>m);
 
