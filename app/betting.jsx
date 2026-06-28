@@ -114,7 +114,7 @@ function generateMarkets(f,home,away,fixtures=[]){
     const base=projectedStarters(team,starterIds);
     return pos?base.filter(p=>p.position===pos):base;
   };
-  const varSeed=seed+mw*13;
+  const varSeed=seed+mw*17;
   const homePool=outfieldPool(home,f.homeStarterIds);
   const awayPool=outfieldPool(away,f.awayStarterIds);
   const sharedPos=[...new Set(homePool.map(p=>p.position))].filter(pos=>awayPool.some(p=>p.position===pos));
