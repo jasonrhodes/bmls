@@ -3921,6 +3921,7 @@ function PlayoffsTab({teams,fixtures}){
   const MatchCard=({match,round,label})=>{
     const[hi,setHi]=useState('');
     const[ai,setAi]=useState('');
+    const[sim,setSim]=useState(null);
     if(!match)return null;
     const ht=teamById(match.homeId),at=teamById(match.awayId);
     const played=match.winnerId!=null,canPlay=!played&&match.homeId&&match.awayId;
@@ -3936,17 +3937,22 @@ function PlayoffsTab({teams,fixtures}){
           <div style={{fontSize:12,fontWeight:match.winnerId===match.awayId?700:400,color:match.winnerId===match.awayId?C.text:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{at?.name||'TBD'}</div>
         </div>
         {canPlay&&(
-          <div>
+          <div style={{marginBottom:8}}>
             <div style={{display:'grid',gridTemplateColumns:'1fr 24px 1fr',gap:4,alignItems:'center',marginBottom:6}}>
               <input type="number" min="0" value={hi} onChange={e=>setHi(e.target.value)} placeholder="0" style={inp}/>
               <div style={{textAlign:'center',color:C.muted,fontFamily:"'Bebas Neue',sans-serif"}}>–</div>
               <input type="number" min="0" value={ai} onChange={e=>setAi(e.target.value)} placeholder="0" style={inp}/>
             </div>
-            <div style={{display:'flex',gap:6}}>
-              <Btn onClick={()=>{if(canSave)applyResult(round,match.id,hv,av);}} style={{flex:1,fontSize:11,opacity:canSave?1:0.4}}>Save Result</Btn>
-              <Btn onClick={()=>playMatch(round,match.id)} variant="secondary" style={{flex:1,fontSize:11}}>▶ Simulate</Btn>
-            </div>
+            <Btn onClick={()=>{if(canSave)applyResult(round,match.id,hv,av);}} style={{width:'100%',fontSize:11,opacity:canSave?1:0.4}}>Save Result</Btn>
           </div>
+        )}
+        {canPlay&&ht&&at&&(
+          <MatchSimPanel
+            fixture={null} home={ht} away={at} fixtures={fixtures}
+            sim={sim}
+            onSimulate={()=>setSim(simPlayoffMatch(ht,at,fixtures))}
+            onApply={sim?()=>applyResult(round,match.id,sim.hGoals,sim.aGoals):null}
+          />
         )}
         {!played&&!canPlay&&<div style={{fontSize:10,color:C.muted,textAlign:'center',fontStyle:'italic'}}>Awaiting previous round</div>}
       </div>
@@ -4056,10 +4062,19 @@ function CareerPlayoffsView({career,onUpdate}){
     onUpdate({...career,playoffs:updatedPO});
   };
   const MatchCard=({match,round,label})=>{
+    const[sim,setSim]=useState(null);
     if(!match)return null;
     const ht=teamById(match.homeId),at=teamById(match.awayId);
     const played=match.winnerId!=null,canPlay=!played&&match.homeId&&match.awayId;
     const myMatch=match.homeId===career.myTeamId||match.awayId===career.myTeamId;
+    const doApply=()=>{
+      if(!sim)return;
+      const winner=sim.hGoals>sim.aGoals?match.homeId:match.awayId;
+      let updatedPO;
+      if(round==='final'){updatedPO={...playoffs,final:{...match,homeScore:sim.hGoals,awayScore:sim.aGoals,winnerId:winner},champion:winner,phase:'done'};}
+      else{const newRound=playoffs[round].map(m=>m.id===match.id?{...m,homeScore:sim.hGoals,awayScore:sim.aGoals,winnerId:winner}:m);updatedPO={...playoffs,[round]:newRound};if(newRound.every(m=>m.winnerId))updatedPO=advancePlayoffBracket(updatedPO);}
+      onUpdate({...career,playoffs:updatedPO});
+    };
     return(
       <div style={{background:C.card,border:`1px solid ${myMatch&&!played?C.accent:C.border}`,borderRadius:8,padding:'10px 12px',marginBottom:6}}>
         {label&&<div style={{fontSize:9,color:C.muted,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',marginBottom:6}}>{label}</div>}
@@ -4069,7 +4084,14 @@ function CareerPlayoffsView({career,onUpdate}){
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:played?26:16,color:played?C.gold:C.border,letterSpacing:3,textAlign:'center',padding:'0 6px'}}>{played?`${match.homeScore}–${match.awayScore}`:'vs'}</div>
           <div style={{fontSize:12,fontWeight:match.winnerId===match.awayId?700:400,color:isMyTeam(match.awayId)?C.accent:match.winnerId===match.awayId?C.text:C.muted,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{at?.name||'TBD'}</div>
         </div>
-        {canPlay&&<Btn onClick={()=>playMatch(round,match.id)} style={{width:'100%',fontSize:11,background:myMatch?C.accent:undefined}}>{myMatch?'▶ Play Your Match':'▶ Simulate'}</Btn>}
+        {canPlay&&ht&&at&&(
+          <MatchSimPanel
+            fixture={null} home={ht} away={at} fixtures={[]}
+            sim={sim}
+            onSimulate={()=>setSim(simCareerPlayoffMatch(match.homeId,match.awayId,career))}
+            onApply={sim?doApply:null}
+          />
+        )}
         {!played&&!canPlay&&<div style={{fontSize:10,color:C.muted,textAlign:'center',fontStyle:'italic'}}>Awaiting previous round</div>}
       </div>
     );
