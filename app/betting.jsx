@@ -104,22 +104,27 @@ function generateMarkets(f,home,away,fixtures=[]){
   }).sort((a,b)=>b._prob-a._prob).slice(0,4).map(({_prob,...m})=>m);
 
   const seed=typeof f.id==='number'?f.id:f.id.split('').reduce((s,c)=>s+c.charCodeAt(0),0);
+  const projectedStarters=(team,starterIds)=>{
+    if(starterIds?.length)return team.players.filter(p=>starterIds.includes(p.id)&&p.name&&p.position!=='GK');
+    return [...team.players].filter(p=>p.name&&p.position!=='GK').sort((a,b)=>(b.score||0)-(a.score||0)).slice(0,5);
+  };
   const outfieldPool=(team,starterIds,pos)=>{
-    const base=starterIds?.length?team.players.filter(p=>starterIds.includes(p.id)&&p.name&&p.position!=='GK'):team.players.filter(p=>p.name&&p.position!=='GK');
+    const base=projectedStarters(team,starterIds);
     return pos?base.filter(p=>p.position===pos):base;
   };
   const homePool=outfieldPool(home,f.homeStarterIds);
   const awayPool=outfieldPool(away,f.awayStarterIds);
   const sharedPos=[...new Set(homePool.map(p=>p.position))].filter(pos=>awayPool.some(p=>p.position===pos));
   const chosenPos=sharedPos.length?sharedPos[seed%sharedPos.length]:null;
-  const homePick=(outfieldPool(home,f.homeStarterIds,chosenPos)||homePool);
-  const awayPick=(outfieldPool(away,f.awayStarterIds,chosenPos)||awayPool);
+  const homePick=outfieldPool(home,f.homeStarterIds,chosenPos);
+  const awayPick=outfieldPool(away,f.awayStarterIds,chosenPos);
   const ratingMarkets=[
-    {p:homePick[seed%homePick.length]||null,team:home},
-    {p:awayPick[(seed+1)%awayPick.length]||null,team:away},
-  ].filter(({p})=>p).flatMap(({p,team})=>{
+    {p:homePick[seed%homePick.length]||null,team:home,winPct:o.pHome},
+    {p:awayPick[(seed+1)%awayPick.length]||null,team:away,winPct:o.pAway},
+  ].filter(({p})=>p).flatMap(({p,team,winPct})=>{
     const avg=playerAvgRating(p.id,p.position,team.id,fixtures)??(p.score||5);
-    const pOver=1/(1+Math.exp(-(avg-7.5)*1.5));
+    const centre=7.5-(winPct-50)*0.025;
+    const pOver=1/(1+Math.exp(-(avg-centre)*1.5));
     return[
       {market:`rating_over_${p.id}`,label:`${p.name} Rating 7.5+`,group:'Player Rating',odds:toOdds(pOver),playerId:p.id,playerPosition:p.position,playerTeamId:team.id},
       {market:`rating_under_${p.id}`,label:`${p.name} Under 7.5`,group:'Player Rating',odds:toOdds(1-pOver),playerId:p.id,playerPosition:p.position,playerTeamId:team.id},
