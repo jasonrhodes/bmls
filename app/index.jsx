@@ -116,11 +116,11 @@ async function resizeCrest(file){
     const url=URL.createObjectURL(file);
     img.onload=()=>{
       const canvas=document.createElement('canvas');
-      canvas.width=100;canvas.height=100;
+      canvas.width=300;canvas.height=300;
       const ctx=canvas.getContext('2d');
       const min=Math.min(img.width,img.height);
       const sx=(img.width-min)/2,sy=(img.height-min)/2;
-      ctx.drawImage(img,sx,sy,min,min,0,0,100,100);
+      ctx.drawImage(img,sx,sy,min,min,0,0,300,300);
       URL.revokeObjectURL(url);
       resolve(canvas.toDataURL('image/png'));
     };
