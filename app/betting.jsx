@@ -1105,26 +1105,101 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
 // ── LeaderboardTab ────────────────────────────────────────────────────────────
 
 function LeaderboardTab({leagueData,allUserRecords,teams,fixtures,settings=DEFAULT_SETTINGS,currentUsername}){
+  const[viewingUser,setViewingUser]=useState(null);
   if(!leagueData)return<div style={{padding:40,textAlign:"center",color:C.muted}}>Join or create a league to see the leaderboard.</div>;
+
+  const allPlayers=teams.flatMap(t=>t.players.filter(p=>p.name).map(p=>({...p,teamName:t.name,teamColor:t.color,cost:fantasyPlayerCost(p,settings)})));
+  const currentMW=activeMatchWeek(fixtures);
 
   const members=leagueData.members||[];
   const memberData=members.map(u=>{
     const rec=allUserRecords.find(r=>r.username===u);
-    if(!rec)return{username:u,balance:100,fantasyPoints:0,betsWon:0,betsTotal:0};
+    if(!rec)return{username:u,rec:null,balance:100,fantasyPoints:0,betsWon:0,betsTotal:0};
     const bets=rec.bets||[];
     const{totalPoints}=calcFantasyPoints(rec.fantasySquad||rec.fantasyPlayerIds||[],rec.fantasyHistory||{},teams,fixtures,settings);
-    return{username:u,balance:rec.balance,fantasyPoints:totalPoints,betsWon:bets.filter(b=>b.status==='won').length,betsTotal:bets.filter(b=>b.status!=='open').length};
+    return{username:u,rec,balance:rec.balance,fantasyPoints:totalPoints,betsWon:bets.filter(b=>b.status==='won').length,betsTotal:bets.filter(b=>b.status!=='open').length};
   }).sort((a,b)=>b.fantasyPoints-a.fantasyPoints);
+
+  const TeamModal=({m})=>{
+    const rec=m.rec;
+    if(!rec||!(rec.fantasySquad||rec.fantasyPlayerIds))return(
+      <div style={{padding:32,textAlign:"center",color:C.muted}}>No squad selected yet.</div>
+    );
+    const squad=(rec.fantasySquad||rec.fantasyPlayerIds||[]).map(id=>allPlayers.find(p=>p.id===id)).filter(Boolean);
+    const hist=(rec.fantasyHistory||{})[String(currentMW)]||{};
+    const starting=hist.starting?.length?hist.starting:squad.slice(0,6).map(p=>p.id);
+    const captain=hist.captain||null;
+    const startingPlayers=starting.map(id=>squad.find(p=>p.id===id)).filter(Boolean);
+    const bench=squad.filter(p=>!starting.includes(p.id));
+    const byPos=pos=>startingPlayers.filter(p=>p.position===pos);
+    const defC=byPos('DEF').length,mdfC=byPos('MDF').length,fwdC=byPos('FWD').length;
+    const Dot=({p})=>{
+      const isCap=p.id===captain;
+      const surname=(p.name||'').trim().split(/\s+/).pop();
+      return(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,minWidth:48}}>
+          <div style={{position:"relative",width:42,height:42,borderRadius:"50%",background:p.teamColor||C.accent,border:`2.5px solid ${p.teamColor||C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 8px ${p.teamColor||C.accent}55`}}>
+            <span style={{fontSize:8,fontWeight:700,color:isLight(p.teamColor||'')?'#000':'#fff'}}>{p.position}</span>
+            {isCap&&<div style={{position:"absolute",top:-4,right:-4,width:15,height:15,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#000"}}>C</div>}
+          </div>
+          <span style={{fontSize:9,color:C.text,fontWeight:700,textAlign:"center",maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{surname}</span>
+          <span style={{fontSize:8,color:C.muted}}>{p.cost}cr</span>
+        </div>
+      );
+    };
+    return(
+      <div>
+        <div style={{background:C.surface,borderRadius:8,padding:"8px 12px",marginBottom:12,textAlign:"center",fontSize:11,color:C.muted}}>
+          Formation: <span style={{color:C.gold,fontWeight:700}}>{defC}-{mdfC}-{fwdC}</span>
+          {captain&&<span style={{marginLeft:12}}>Captain: <span style={{color:C.gold,fontWeight:700}}>{squad.find(p=>p.id===captain)?.name||'—'}</span></span>}
+        </div>
+        <div style={{background:"linear-gradient(180deg,#1a7340 0%,#1e8a4a 40%,#1a7340 100%)",borderRadius:10,padding:"14px 8px",marginBottom:12}}>
+          {['FWD','MDF','DEF','GK'].map(pos=>{
+            const row=byPos(pos);
+            if(!row.length)return null;
+            return<div key={pos} style={{display:"flex",justifyContent:"center",gap:10,marginBottom:pos==='GK'?0:12}}>{row.map(p=><Dot key={p.id} p={p}/>)}</div>;
+          })}
+        </div>
+        {bench.length>0&&(
+          <div>
+            <div style={{fontSize:9,fontWeight:700,color:C.muted,letterSpacing:2,textTransform:"uppercase",marginBottom:6}}>Bench</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {bench.map(p=>(
+                <div key={p.id} style={{background:C.surface,borderRadius:8,padding:"6px 10px",display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{width:24,height:24,borderRadius:"50%",background:p.teamColor||C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <span style={{fontSize:7,fontWeight:700,color:isLight(p.teamColor||'')?'#000':'#fff'}}>{p.position}</span>
+                  </div>
+                  <span style={{fontSize:11,color:C.text,fontWeight:600}}>{p.name}</span>
+                  <span style={{fontSize:10,color:C.muted}}>{p.cost}cr</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return(
     <div>
+      {viewingUser&&(
+        <div onClick={()=>setViewingUser(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"center",overflowY:"auto",padding:"20px 16px"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:C.bg,border:`1px solid ${C.border}`,borderRadius:16,padding:20,width:"100%",maxWidth:480,marginTop:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:C.gold,letterSpacing:1}}>{viewingUser.username}'s Team</div>
+              <button onClick={()=>setViewingUser(null)} style={{background:"none",border:"none",color:C.muted,fontSize:20,cursor:"pointer",lineHeight:1}}>×</button>
+            </div>
+            <TeamModal m={viewingUser}/>
+          </div>
+        </div>
+      )}
       <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:20}}>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:C.gold,letterSpacing:1}}>{leagueData.displayName}</div>
         <div style={{fontSize:11,color:C.muted,marginTop:2}}>{members.length} member{members.length!==1?'s':''} · Created by {leagueData.createdBy}</div>
       </div>
       <SLabel>Standings</SLabel>
       {memberData.map((m,i)=>(
-        <div key={m.username} style={{background:C.card,border:`1px solid ${m.username===currentUsername?C.gold:C.border}`,borderLeft:`3px solid ${i===0?C.gold:i===1?C.muted:i===2?'#cd7f32':C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
+        <div key={m.username} onClick={()=>setViewingUser(m)} style={{background:C.card,border:`1px solid ${m.username===currentUsername?C.gold:C.border}`,borderLeft:`3px solid ${i===0?C.gold:i===1?C.muted:i===2?'#cd7f32':C.border}`,borderRadius:10,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:i===0?C.gold:i===1?C.muted:i===2?'#cd7f32':C.muted,width:28,textAlign:"center"}}>{i+1}</div>
           <div style={{flex:1}}>
             <div style={{fontSize:13,fontWeight:700,color:m.username===currentUsername?C.gold:C.text}}>{m.username}{m.username===currentUsername?' (you)':''}</div>
@@ -1134,6 +1209,7 @@ function LeaderboardTab({leagueData,allUserRecords,teams,fixtures,settings=DEFAU
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.green}}>{m.fantasyPoints} pts</div>
             <div style={{fontSize:10,color:C.muted}}>${m.balance.toFixed(2)}</div>
           </div>
+          <span style={{color:C.muted,fontSize:14}}>›</span>
         </div>
       ))}
     </div>
