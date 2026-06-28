@@ -606,6 +606,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   const isLocked=!!(userData.fantasyHistory||{})[String(currentMW)];
   const freeTransfers=userData.freeTransfers??1;
   const boosts=userData.boostsAvailable||{benchBoost:true,tripleCaptain:true,wildcard:true};
+  const hasEmergencyUnlock=boosts.emergencyUnlock!==false;
 
   const allPlayers=useMemo(()=>{
     const arr=[];
@@ -634,7 +635,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   const confirmSquad=async()=>{
     if(!squadComplete||pickingRemaining<0)return;
     setSaving(true);
-    await onSaveFantasy({squad:picking,history:userData.fantasyHistory||{},freeTransfers:userData.freeTransfers??1,boostsAvailable:userData.boostsAvailable||{benchBoost:true,tripleCaptain:true,wildcard:true}});
+    await onSaveFantasy({squad:picking,history:userData.fantasyHistory||{},freeTransfers:userData.freeTransfers??1,boostsAvailable:userData.boostsAvailable||{benchBoost:true,tripleCaptain:true,wildcard:true,emergencyUnlock:true}});
     setSaving(false);
     setSubView('team');
   };
@@ -682,6 +683,17 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
     setSaving(false);
     setPendingTransfers([]);
     setTransferOut(null);
+  };
+
+  const unlockLineup=async()=>{
+    if(!hasEmergencyUnlock||!isLocked)return;
+    setSaving(true);
+    const hist={...(userData.fantasyHistory||{})};
+    const prev=hist[String(currentMW)];
+    if(prev){setLocalStarting(prev.starting||[]);setLocalCaptain(prev.captain||null);}
+    delete hist[String(currentMW)];
+    await onSaveFantasy({squad,history:hist,freeTransfers,boostsAvailable:{...boosts,emergencyUnlock:false}});
+    setSaving(false);
   };
 
   const{totalPoints,breakdown}=useMemo(()=>calcFantasyPoints(squad,userData.fantasyHistory||{},teams,fixtures,settings),[squad,userData.fantasyHistory,teams,fixtures,settings]);
@@ -895,6 +907,8 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
           {deduction>0&&<div style={{background:'#f9731622',border:"1px solid #f97316",borderRadius:8,padding:"8px 12px",fontSize:11,color:'#f97316',marginBottom:8}}>{extraTransfers} extra transfer{extraTransfers!==1?'s':''} = −{deduction} pts this MW</div>}
           {!isLocked&&<Btn onClick={lockLineup} disabled={!canLock||saving} variant="gold" style={{width:"100%"}}>{saving?'Saving…':`Lock Lineup for MW ${currentMW}`}</Btn>}
           {isLocked&&<div style={{background:C.green+'22',border:`1px solid ${C.green}`,borderRadius:8,padding:"10px 14px",fontSize:12,color:C.green,fontWeight:600,textAlign:"center"}}>✓ Lineup locked for Match Week {currentMW}</div>}
+          {isLocked&&hasEmergencyUnlock&&<button onClick={unlockLineup} disabled={saving} style={{display:"block",width:"100%",marginTop:6,background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:11,color:C.muted,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>🔓 Emergency Unlock <span style={{color:C.gold,fontWeight:700}}>(1 use remaining)</span></button>}
+          {isLocked&&!hasEmergencyUnlock&&<div style={{fontSize:10,color:C.muted,textAlign:"center",marginTop:6}}>Emergency unlock already used this season</div>}
           {!isLocked&&<button onClick={()=>setSubView('squad')} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",marginTop:8,display:"block",width:"100%",textAlign:"center"}}>Change squad</button>}
         </div>
       )}
