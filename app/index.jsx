@@ -1139,6 +1139,7 @@ function SquadsTab({teams,fixtures}){
   const named=teams.filter(t=>t.name&&t.players.length>0);
   const[selId,setSelId]=useState(null);
   const[showCrests,setShowCrests]=useState(false);
+  const[crestModal,setCrestModal]=useState(null);
   const team=teams.find(t=>t.id===selId);
   const ratings=team?lineupRatings(team):null;
   const avail=p=>!p.injured&&!isAutoSuspended(p.id,fixtures);
@@ -1151,11 +1152,17 @@ function SquadsTab({teams,fixtures}){
         {named.map(t=><button key={t.id} onClick={()=>{setSelId(t.id);setShowCrests(false);}} style={{background:selId===t.id&&!showCrests?t.color:C.card,color:selId===t.id&&!showCrests?(isLight(t.color)?'#000':'#fff'):C.sub,border:`1px solid ${selId===t.id&&!showCrests?t.color:C.border}`,borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{t.name}</button>)}
         <button onClick={()=>{setShowCrests(s=>!s);setSelId(null);}} style={{background:showCrests?C.accent:C.card,color:showCrests?'#fff':C.sub,border:`1px solid ${showCrests?C.accent:C.border}`,borderRadius:8,padding:"7px 14px",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",marginLeft:'auto',flexShrink:0}}>View Crests</button>
       </div>
+        {crestModal&&(
+          <div onClick={()=>setCrestModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <button onClick={()=>setCrestModal(null)} style={{position:"absolute",top:20,right:20,background:"rgba(255,255,255,0.15)",border:"none",color:"#fff",borderRadius:"50%",width:36,height:36,fontSize:20,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
+            <img src={crestModal} onClick={e=>e.stopPropagation()} style={{maxWidth:280,maxHeight:280,borderRadius:12,objectFit:"contain"}} alt=""/>
+          </div>
+        )}
         {showCrests&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
             {named.map(t=>(
               <div key={t.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-                <TeamBadge color={t.color} crest={t.crest} size={64}/>
+                <div onClick={()=>t.crest&&setCrestModal(t.crest)} style={{cursor:t.crest?"pointer":"default"}}><TeamBadge color={t.color} crest={t.crest} size={64}/></div>
                 <div style={{fontSize:12,fontWeight:700,color:C.text,textAlign:"center",lineHeight:1.3}}>{t.name}</div>
               </div>
             ))}
@@ -4265,6 +4272,11 @@ function App(){
         {tab==="create"    &&<CreateTab teams={teams}/>}
         {tab==="career"    &&<CareerTab teams={teams}/>}
         {tab==="manage"    &&<ManageTab teams={teams} setTeams={setTeams} fixtures={fixtures} setFixtures={setFixtures} transfers={transfers} setTransfers={setTransfers} activeMatchWeek={activeMatchWeek} setActiveMatchWeek={setActiveMatchWeek} onExport={handleExport} onImport={handleImport} onToast={showToast}/>}
+      </div>
+      <div style={{borderTop:`1px solid ${C.border}`,background:C.surface,padding:"12px 16px",display:"flex",justifyContent:"center",gap:24}}>
+        {[['⚽ BMLS','/'],['🌍 World Cup','/worldcup'],['🎰 Betting & Fantasy','/betting']].map(([label,href])=>(
+          <a key={href} href={href} style={{fontSize:11,fontWeight:600,color:window.location.pathname===href?C.gold:C.muted,textDecoration:"none"}}>{label}</a>
+        ))}
       </div>
     </div>
   );
