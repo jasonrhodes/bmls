@@ -504,12 +504,13 @@ function BettingTab({teams,fixtures,userData,onPlaceBet}){
                                 const stake=parseFloat(stakes[selKey])||0;
                                 return(
                                   <div key={pid} style={{background:C.surface,borderRadius:8,padding:"10px 12px"}}>
-                                    <div style={{fontSize:11,fontWeight:700,color:C.text,marginBottom:8}}>{over?.label?.replace(' Rating 7.5+','')}</div>
+                                    <div style={{fontSize:11,fontWeight:700,color:C.text,marginBottom:8}}>{over?.label?.replace(/\s+Rating.*$/,'')}</div>
                                     <div style={{display:"flex",gap:6,marginBottom:selM?8:0}}>
                                       {[over,under].filter(Boolean).map(m=>{
                                         const key=`${f.id}_${m.market}`;
                                         const isSel=!!selectedMarket[key];
-                                        const label=m.market.startsWith('rating_over_')?'Over 7.5':'Under 7.5';
+                                        const t=m.ratingThreshold??7.5;
+                                        const label=m.market.startsWith('rating_over_')?`Over ${t}`:`Under ${t}`;
                                         return(
                                           <button key={m.market} onClick={()=>{const otherKey=m.market.startsWith('rating_over_')?`${f.id}_rating_under_${pid}`:`${f.id}_rating_over_${pid}`;setSelectedMarket(prev=>({...prev,[otherKey]:null,[key]:prev[key]?null:m}));}} style={{flex:1,background:isSel?C.gold+'22':C.card,border:`1px solid ${isSel?C.gold:C.border}`,borderRadius:6,padding:"8px 0",cursor:"pointer",textAlign:"center"}}>
                                             <div style={{fontSize:10,color:isSel?C.gold:C.muted,fontWeight:600}}>{label}</div>
