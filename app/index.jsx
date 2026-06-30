@@ -787,7 +787,7 @@ function FixturesTab({teams,fixtures,onPlayerClick,activeMatchWeek,onApplySim}){
                     <TeamBadge color={h.color} crest={h.crest} size={26}/>
                   </div>
                   <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:f.played?26:15,color:f.played?C.gold:C.muted,background:C.surface,borderRadius:8,padding:"6px 16px",textAlign:"center",letterSpacing:2,minWidth:80}}>
-                    {f.played?`${f.homeScore}  ${f.awayScore}`:"vs"}
+                    {f.played?`${f.homeScore}–${f.awayScore}`:"vs"}
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <TeamBadge color={a.color} crest={a.crest} size={26}/>
