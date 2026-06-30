@@ -751,6 +751,18 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   const{totalPoints,breakdown}=useMemo(()=>calcFantasyPoints(squad,userData.fantasyHistory||{},teams,fixtures,settings),[squad,userData.fantasyHistory,teams,fixtures,settings]);
   const playerPtsMap=useMemo(()=>{const m={};breakdown.forEach(({details})=>details.forEach(({playerId,pts})=>{m[playerId]=(m[playerId]||0)+pts;}));return m;},[breakdown]);
   const anyMWPlayed=breakdown.length>0;
+  const playerRawPts=useMemo(()=>{
+    const m={};const pts=settings.points||DEFAULT_SETTINGS.points;
+    const allP={};teams.forEach(t=>t.players.forEach(p=>{allP[p.id]={...p,teamId:t.id};}));
+    const byMW={};fixtures.filter(f=>f.played).forEach(f=>{const mw=f.matchWeek||0;if(!byMW[mw])byMW[mw]=[];byMW[mw].push(f);});
+    Object.values(byMW).forEach(mwF=>{
+      const mwRatings=[];
+      mwF.forEach(f=>{(f.playerStats||[]).forEach(ps=>{const pl=allP[ps.playerId];if(!pl)return;const ih=f.homeId===pl.teamId;if(!ih&&f.awayId!==pl.teamId)return;const res=ih?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');mwRatings.push({playerId:ps.playerId,rating:calcMatchRating(ps,pl.position,res)});});});
+      const top5=new Set(mwRatings.sort((a,b)=>b.rating-a.rating).slice(0,5).map(r=>r.playerId));
+      squad.forEach(pid=>{const player=allP[pid];if(!player)return;const score=scorePlayer(pid,player,mwF,pts,top5);m[pid]=(m[pid]||0)+score;});
+    });
+    return m;
+  },[fixtures,teams,squad,settings]);
   const nextOpponent=useMemo(()=>(teamId)=>{
     const up=fixtures.filter(f=>!f.played&&(f.homeId===teamId||f.awayId===teamId)).sort((a,b)=>(a.matchWeek||0)-(b.matchWeek||0));
     if(!up.length)return null;
@@ -889,12 +901,14 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
           </div>
           {isCap&&<div style={{position:"absolute",top:-4,right:-4,width:15,height:15,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#000"}}>C</div>}
         </div>
-        <span style={{fontSize:9,color:C.text,fontWeight:700,textAlign:"center",maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{surname}</span>
+        <div style={{display:"flex",alignItems:"center",gap:3,maxWidth:68}}>
+          <span style={{fontSize:9,color:C.text,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{surname}</span>
+          {(()=>{const n=nextOpponent(p.teamId);return n?<span style={{fontSize:7,color:C.muted,whiteSpace:"nowrap",flexShrink:0}}>{n}</span>:null;})()}
+        </div>
         {!isLocked&&isStarting&&<button onClick={e=>{e.stopPropagation();setCaptain(p.id);}} style={{background:isCap?C.gold:C.surface,border:`1px solid ${isCap?C.gold:C.border}`,borderRadius:10,padding:"1px 5px",fontSize:7,fontWeight:700,color:isCap?'#000':C.muted,cursor:"pointer"}}>C</button>}
         <span style={{fontSize:8,color:C.muted}}>{p.cost}cr</span>
-        {anyMWPlayed&&(()=>{const pts=playerPtsMap[p.id]??0;return<span style={{fontSize:9,fontWeight:700,color:pts<0?C.red:pts===0?C.muted:C.green}}>{pts>0?'+':''}{pts}pts</span>;})()}
+        {anyMWPlayed&&(()=>{const pts=isStarting?(playerPtsMap[p.id]??0):(playerRawPts[p.id]??0);return<span style={{fontSize:9,fontWeight:700,color:pts<0?C.red:pts===0?C.muted:C.green}}>{pts>0?'+':''}{pts}pts{!isStarting&&pts!==0?<span style={{fontSize:6,color:C.muted,fontWeight:400}}> (bench)</span>:null}</span>;})()}
         {(()=>{const st=mwStatus(p.teamId);return st?<span style={{fontSize:7,fontWeight:800,color:st.label==='To Play'?'#000':C.text,background:st.label==='To Play'?C.gold:'#374151',borderRadius:6,padding:"1px 5px",letterSpacing:0.3}}>{st.label}</span>:null;})()}
-        {(()=>{const n=nextOpponent(p.teamId);return n?<span style={{fontSize:7,color:C.muted,textAlign:"center",maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{n}</span>:null;})()}
       </div>
     );
   };
@@ -997,14 +1011,15 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
           {!transferOut?(
             <>
               <SLabel>Select player to transfer out</SLabel>
-              {squadPlayers.map(p=>{const nxt=nextOpponent(p.teamId);const ppts=anyMWPlayed?(playerPtsMap[p.id]??0):null;const st=mwStatus(p.teamId);return(
-                <button key={p.id} onClick={()=>setTransferOut(p.id)} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer",textAlign:"left"}}>
-                  <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700}}>{p.position}</span>
-                  <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}</span>
-                  {st&&<span style={{fontSize:9,fontWeight:700,color:st.color}}>{st.label}</span>}
-                  {nxt&&<span style={{fontSize:9,color:C.muted}}>{nxt}</span>}
-                  {ppts!=null&&<span style={{fontSize:10,fontWeight:700,color:ppts<0?C.red:ppts===0?C.muted:C.green}}>{ppts>0?'+':''}{ppts}</span>}
-                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.gold}}>{p.cost}</span>
+              {squadPlayers.map(p=>{const nxt=nextOpponent(p.teamId);const ppts=anyMWPlayed?(playerRawPts[p.id]??0):null;const st=mwStatus(p.teamId);return(
+                <button key={p.id} onClick={()=>setTransferOut(p.id)} style={{display:"flex",alignItems:"center",gap:8,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer",textAlign:"left"}}>
+                  <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}{nxt&&<span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:5}}>{nxt}</span>}</div>
+                  </div>
+                  {st&&<span style={{fontSize:9,fontWeight:700,color:st.label==='To Play'?'#000':C.text,background:st.label==='To Play'?C.gold:'#374151',borderRadius:5,padding:"1px 5px",flexShrink:0}}>{st.label}</span>}
+                  {ppts!=null&&<span style={{fontSize:10,fontWeight:700,color:ppts<0?C.red:ppts===0?C.muted:C.green,flexShrink:0}}>{ppts>0?'+':''}{ppts}pts</span>}
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.gold,flexShrink:0}}>{p.cost}</span>
                 </button>
               );})}
             </>
@@ -1027,19 +1042,20 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
                 </div>
                 <SLabel>Select replacement ({outPlayer?.position})</SLabel>
                 {available.length===0&&<div style={{color:C.muted,fontSize:12,padding:"20px 0",textAlign:"center"}}>No eligible players within budget</div>}
-                {available.map(p=>{const nxt=nextOpponent(p.teamId);const ppts=anyMWPlayed?(playerPtsMap[p.id]??0):null;const st=mwStatus(p.teamId);return(
+                {available.map(p=>{const nxt=nextOpponent(p.teamId);const ppts=anyMWPlayed?(playerRawPts[p.id]??0):null;const st=mwStatus(p.teamId);return(
                   <button key={p.id} onClick={()=>{
                     setPendingTransfers(prev=>[...prev,{outId:transferOut,inId:p.id}]);
                     if(localStarting.includes(transferOut))setLocalStarting(prev=>prev.map(id=>id===transferOut?p.id:id));
                     if(localCaptain===transferOut)setLocalCaptain(null);
                     setTransferOut(null);
-                  }} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:C.surface,border:`1px solid ${C.green}44`,borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer",textAlign:"left"}}>
-                    <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700}}>{p.position}</span>
-                    <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}</span>
-                    {st&&<span style={{fontSize:9,fontWeight:700,color:st.color}}>{st.label}</span>}
-                    {nxt&&<span style={{fontSize:9,color:C.muted}}>{nxt}</span>}
-                    {ppts!=null&&<span style={{fontSize:10,fontWeight:700,color:ppts<0?C.red:ppts===0?C.muted:C.green}}>{ppts>0?'+':''}{ppts}</span>}
-                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.green}}>{p.cost}</span>
+                  }} style={{display:"flex",alignItems:"center",gap:8,width:"100%",background:C.surface,border:`1px solid ${C.green}44`,borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer",textAlign:"left"}}>
+                    <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}{nxt&&<span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:5}}>{nxt}</span>}</div>
+                    </div>
+                    {st&&<span style={{fontSize:9,fontWeight:700,color:st.label==='To Play'?'#000':C.text,background:st.label==='To Play'?C.gold:'#374151',borderRadius:5,padding:"1px 5px",flexShrink:0}}>{st.label}</span>}
+                    {ppts!=null&&<span style={{fontSize:10,fontWeight:700,color:ppts<0?C.red:ppts===0?C.muted:C.green,flexShrink:0}}>{ppts>0?'+':''}{ppts}pts</span>}
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.green,flexShrink:0}}>{p.cost}</span>
                   </button>
                 );})}
               </>
