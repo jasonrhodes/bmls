@@ -837,6 +837,9 @@ function FixturesTab({teams,fixtures,onPlayerClick,activeMatchWeek,onApplySim}){
                     const r=getRating(p,team);
                     const bg=r!=null?ratingColor(r):'#6b7280';
                     const isCap=(p.roles||[]).includes('captain');
+                    const stat=ps.find(s=>s.playerId===p.id);
+                    const goals=stat?.goals||0,assists=stat?.assists||0,yellows=stat?.yellowCards||0,red=stat?.redCard||false;
+                    const icons=[...Array(goals).fill('⚽'),...Array(assists).fill('🦶'),...Array(yellows).fill('🟨'),...(red?['🟥']:[])];
                     return(
                       <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,width:76}}>
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -849,18 +852,23 @@ function FixturesTab({teams,fixtures,onPlayerClick,activeMatchWeek,onApplySim}){
                           {nationCrests[p.country]?<img src={nationCrests[p.country]} style={{width:22,height:15,borderRadius:2,objectFit:"cover",flexShrink:0}} alt=""/>:p.country?<span style={{fontSize:11}}>{flagEmoji(p.country)}</span>:null}
                         </div>
                         <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",lineHeight:1.2,textShadow:"0 1px 3px rgba(0,0,0,0.9)",maxWidth:76,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(p.name||"?").trim().split(/\s+/).pop()||"?"}</span>
+                        {icons.length>0&&<div style={{fontSize:9,lineHeight:1,letterSpacing:1}}>{icons.join('')}</div>}
                       </div>
                     );
                   };
                   const RatingBenchDot=({p,team})=>{
                     const r=getRating(p,team);
                     const bg=r!=null?ratingColor(r)+'99':'#6b728099';
+                    const stat=ps.find(s=>s.playerId===p.id);
+                    const goals=stat?.goals||0,assists=stat?.assists||0,yellows=stat?.yellowCards||0,red=stat?.redCard||false;
+                    const icons=[...Array(goals).fill('⚽'),...Array(assists).fill('🦶'),...Array(yellows).fill('🟨'),...(red?['🟥']:[])];
                     return(
                       <div style={{display:"flex",flexDirection:"column",alignItems:"center",marginBottom:10}}>
                         <div style={{width:28,height:28,borderRadius:"50%",background:bg,border:`1.5px solid rgba(255,255,255,0.3)`,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:3}}>
                           <span style={{fontSize:r!=null?9:7,fontWeight:900,color:"#fff"}}>{r!=null?r:p.position}</span>
                         </div>
                         <span style={{fontSize:7,color:"rgba(255,255,255,0.6)",textAlign:"center",fontWeight:600,lineHeight:1.2,maxWidth:50,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(p.name||"?").trim().split(/\s+/).pop()}</span>
+                        {icons.length>0&&<div style={{fontSize:8,lineHeight:1,letterSpacing:0.5,marginTop:1}}>{icons.join('')}</div>}
                       </div>
                     );
                   };
