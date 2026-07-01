@@ -655,6 +655,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   const[pendingTransfers,setPendingTransfers]=useState([]);
   const[saving,setSaving]=useState(false);
   const[pickingSlot,setPickingSlot]=useState(null);
+  const[squadMode,setSquadMode]=useState('own');
   const[teamView,setTeamView]=useState('upcoming');
   const[ptView,setPtView]=useState('mine');
   const[mwSel,setMwSel]=useState(null);
@@ -801,6 +802,47 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
     return Object.values(allP).map(p=>({...p,pts:scorePlayer(p.id,p,mwF,fpts,top5)})).filter(p=>p.pts!==0).sort((a,b)=>b.pts-a.pts);
   },[ptActiveMW,fixtures,teams,settings]);
   const mwLeaderboardFiltered=posFil==='all'?mwLeaderboard:mwLeaderboard.filter(p=>p.position===posFil);
+  const totmwSquad=useMemo(()=>{
+    const playedMWs=[...new Set(fixtures.filter(f=>f.played&&f.matchWeek!=null).map(f=>f.matchWeek))].sort((a,b)=>a-b);
+    const lastMW=playedMWs[playedMWs.length-1];
+    if(lastMW==null)return null;
+    const mwF=fixtures.filter(f=>f.played&&f.matchWeek===lastMW);
+    const fpts=settings.points||DEFAULT_SETTINGS.points;
+    const allP={};teams.forEach(t=>t.players.forEach(p=>{if(p.name)allP[p.id]={...p,teamId:t.id,teamName:t.name,teamColor:t.color};}));
+    const mwRatings=[];
+    mwF.forEach(f=>{(f.playerStats||[]).forEach(ps=>{const pl=allP[ps.playerId];if(!pl)return;const ih=f.homeId===pl.teamId;if(!ih&&f.awayId!==pl.teamId)return;const res=ih?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');mwRatings.push({playerId:ps.playerId,rating:calcMatchRating(ps,pl.position,res)});});});
+    const top5=new Set(mwRatings.sort((a,b)=>b.rating-a.rating).slice(0,5).map(r=>r.playerId));
+    const B=settings.fantasyBudget??DEFAULT_SETTINGS.fantasyBudget;
+    const scored=Object.values(allP).map(p=>({...p,mwPts:scorePlayer(p.id,p,mwF,fpts,top5)})).filter(p=>p.mwPts>0);
+    const byPosS={GK:[],DEF:[],MDF:[],FWD:[]};
+    scored.forEach(p=>{if(byPosS[p.position])byPosS[p.position].push(p);});
+    Object.values(byPosS).forEach(arr=>arr.sort((a,b)=>b.mwPts-a.mwPts));
+    const VFORMS=[{DEF:2,MDF:2,FWD:1},{DEF:2,MDF:1,FWD:2},{DEF:3,MDF:1,FWD:1},{DEF:2,MDF:3,FWD:0}];
+    let bestTotal=-Infinity,bestPick=null,bestStarting=null,bestFormation=null;
+    VFORMS.forEach(fm=>{
+      const needed={GK:1,DEF:fm.DEF,MDF:fm.MDF,FWD:fm.FWD};
+      const picked=[];const tc={};let budget=B;let total=0;let ok=true;
+      for(const pos of['GK','DEF','MDF','FWD']){
+        let cnt=0;
+        for(const p of(byPosS[pos]||[])){
+          if(cnt>=needed[pos])break;
+          if(picked.some(q=>q.id===p.id)||(tc[p.teamId]||0)>=3||p.cost>budget)continue;
+          picked.push(p);tc[p.teamId]=(tc[p.teamId]||0)+1;budget-=p.cost;total+=p.mwPts;cnt++;
+        }
+        if(cnt<needed[pos]){ok=false;break;}
+      }
+      if(!ok)return;
+      const bench=[];
+      scored.filter(p=>!picked.some(q=>q.id===p.id)).sort((a,b)=>b.mwPts-a.mwPts).forEach(p=>{
+        if(bench.length>=3)return;if((tc[p.teamId]||0)>=3||p.cost>budget)return;
+        bench.push(p);tc[p.teamId]=(tc[p.teamId]||0)+1;budget-=p.cost;
+      });
+      if(total>bestTotal){bestTotal=total;bestStarting=picked.map(p=>p.id);bestPick=[...picked,...bench].map(p=>p.id);bestFormation=`${fm.DEF}-${fm.MDF}-${fm.FWD}`;}
+    });
+    if(!bestPick)return null;
+    const playerPts={};scored.forEach(p=>{playerPts[p.id]=p.mwPts;});
+    return{picking:bestPick,starting:bestStarting,mw:lastMW,total:Math.round(bestTotal),formation:bestFormation,playerPts};
+  },[fixtures,teams,settings]);
   const nextOpponent=useMemo(()=>(teamId)=>{
     const up=fixtures.filter(f=>!f.played&&(f.homeId===teamId||f.awayId===teamId)).sort((a,b)=>(a.matchWeek||0)-(b.matchWeek||0));
     if(!up.length)return null;
@@ -866,62 +908,123 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
     };
     const pickerPos=pickingSlot?.pos;
     const pickerOptions=pickerPos?byPos[pickerPos].filter(p=>!picking.includes(p.id)):[];
+    const totmwStarting=totmwSquad?totmwSquad.starting.map(id=>allPlayers.find(p=>p.id===id)).filter(Boolean):[];
+    const totmwBench=totmwSquad?totmwSquad.picking.filter(id=>!totmwSquad.starting.includes(id)).map(id=>allPlayers.find(p=>p.id===id)).filter(Boolean):[];
+    const TotmwDot=({p,isBench})=>{
+      const pts=totmwSquad?.playerPts?.[p.id]??0;
+      const surname=(p.name||'').trim().split(/\s+/).pop();
+      const sz=isBench?36:44;
+      return(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,minWidth:isBench?46:54}}>
+          <div style={{position:"relative"}}>
+            <div style={{width:sz,height:sz,borderRadius:"50%",background:p.teamColor,border:`2.5px solid ${C.gold}`,boxShadow:`0 0 14px ${C.gold}66, 0 2px 8px ${p.teamColor}88`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:isBench?7:8,fontWeight:700,color:isLight(p.teamColor||'')?'#000':'#fff'}}>{p.position}</span>
+            </div>
+            <div style={{position:"absolute",top:-6,right:-8,background:C.gold,color:"#000",borderRadius:4,fontSize:7,fontWeight:900,padding:"1px 4px",lineHeight:1.4,whiteSpace:"nowrap"}}>{pts>0?'+':''}{pts}pts</div>
+          </div>
+          <span style={{fontSize:isBench?8:9,fontWeight:700,color:"#fff",textAlign:"center",maxWidth:isBench?46:54,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textShadow:"0 1px 3px rgba(0,0,0,0.9)"}}>{surname}</span>
+          <span style={{fontSize:7,color:"rgba(255,255,255,0.6)",textShadow:"0 1px 2px rgba(0,0,0,0.8)"}}>{p.cost}cr</span>
+        </div>
+      );
+    };
     return(
       <div>
-        {/* Header */}
-        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold,letterSpacing:1}}>Build Your Squad</div>
-            <div style={{fontSize:12,fontWeight:700,color:pickingRemaining<0?C.red:C.text}}>{pickingRemaining} cr left</div>
-          </div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {['GK','DEF','MDF','FWD'].map(pos=>(
-              <div key={pos} style={{background:posColor(pos)+'22',borderRadius:6,padding:"3px 10px",display:"flex",gap:4,alignItems:"center"}}>
-                <span style={{fontSize:9,fontWeight:700,color:posColor(pos)}}>{pos}</span>
-                <span style={{fontSize:12,fontWeight:700,color:pickCounts[pos]===REQUIRED[pos]?C.green:C.text}}>{pickCounts[pos]}/{REQUIRED[pos]}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        {/* Pitch */}
-        <div style={{position:"relative",background:"linear-gradient(180deg,#1a7340 0%,#1e8a4a 40%,#1a7340 100%)",borderRadius:12,padding:"16px 8px",marginBottom:12,overflow:"hidden"}}>
-          <div style={{position:"absolute",top:"50%",left:"8%",right:"8%",height:1,background:"rgba(255,255,255,0.12)",transform:"translateY(-50%)"}}/>
-          <div style={{position:"absolute",top:"50%",left:"50%",width:54,height:54,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",transform:"translate(-50%,-50%)"}}/>
-          <div style={{position:"absolute",bottom:0,left:"28%",right:"28%",height:"16%",border:"1px solid rgba(255,255,255,0.1)",borderBottom:"none"}}/>
-          <div style={{position:"absolute",top:0,left:"28%",right:"28%",height:"16%",border:"1px solid rgba(255,255,255,0.1)",borderTop:"none"}}/>
-          {['FWD','MDF','DEF','GK'].map(pos=>(
-            <div key={pos} style={{display:"flex",justifyContent:"center",gap:pos==='GK'?0:8,marginBottom:pos==='GK'?0:14}}>
-              {slotMap[pos].map((player,idx)=><PitchSlot key={idx} player={player} pos={pos} idx={idx}/>)}
-            </div>
+        {/* Mode toggle */}
+        <div style={{display:"flex",background:C.surface,borderRadius:10,padding:3,marginBottom:12}}>
+          {[['own','Build Your Own'],['totmw','⭐ Team of the MW']].map(([k,l])=>(
+            <button key={k} onClick={()=>{setSquadMode(k);setPickingSlot(null);}} style={{flex:1,background:squadMode===k?C.card:'transparent',border:'none',borderRadius:8,padding:'8px 0',fontSize:12,fontWeight:700,color:squadMode===k?C.gold:C.muted,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{l}</button>
           ))}
         </div>
-        {/* Player picker panel */}
-        {pickingSlot&&(
-          <div style={{background:C.card,border:`2px solid ${posColor(pickerPos)}`,borderRadius:12,padding:16,marginBottom:12}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{fontWeight:700,fontSize:13,color:posColor(pickerPos)}}>Pick a {pickerPos}</div>
-              <button onClick={()=>setPickingSlot(null)} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer",lineHeight:1}}>×</button>
+
+        {squadMode==='totmw'?(
+          !totmwSquad?(
+            <div style={{textAlign:"center",color:C.muted,fontSize:13,padding:"40px 0"}}>No matchweek data yet — fixtures need to be played first</div>
+          ):(
+            <div>
+              <div style={{background:C.card,border:`1px solid ${C.gold}44`,borderRadius:12,padding:"12px 16px",marginBottom:12}}>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold,letterSpacing:1,marginBottom:4}}>Team of Match Week {totmwSquad.mw}</div>
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <div style={{fontSize:11,color:C.muted}}>Formation: <span style={{color:C.text,fontWeight:700}}>1-{totmwSquad.formation}</span></div>
+                  <div style={{fontSize:11,color:C.muted}}>MW pts: <span style={{color:C.gold,fontWeight:700}}>{totmwSquad.total}</span></div>
+                </div>
+              </div>
+              <div style={{position:"relative",background:"linear-gradient(180deg,#1a7340 0%,#1e8a4a 40%,#1a7340 100%)",borderRadius:12,padding:"16px 8px",marginBottom:12,overflow:"hidden"}}>
+                <div style={{position:"absolute",top:"50%",left:"8%",right:"8%",height:1,background:"rgba(255,255,255,0.12)",transform:"translateY(-50%)"}}/>
+                <div style={{position:"absolute",top:"50%",left:"50%",width:54,height:54,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",transform:"translate(-50%,-50%)"}}/>
+                <div style={{position:"absolute",bottom:0,left:"28%",right:"28%",height:"16%",border:"1px solid rgba(255,255,255,0.1)",borderBottom:"none"}}/>
+                <div style={{position:"absolute",top:0,left:"28%",right:"28%",height:"16%",border:"1px solid rgba(255,255,255,0.1)",borderTop:"none"}}/>
+                <div style={{textAlign:"center",fontSize:8,color:"rgba(255,215,0,0.7)",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Starting 6</div>
+                {['FWD','MDF','DEF','GK'].map(pos=>{
+                  const row=totmwStarting.filter(p=>p.position===pos);
+                  if(!row.length)return null;
+                  return<div key={pos} style={{display:"flex",justifyContent:"center",gap:8,marginBottom:pos==='GK'?0:14}}>{row.map(p=><TotmwDot key={p.id} p={p} isBench={false}/>)}</div>;
+                })}
+                <div style={{height:1,background:"rgba(255,255,255,0.12)",margin:"10px 0"}}/>
+                <div style={{textAlign:"center",fontSize:8,color:"rgba(255,215,0,0.4)",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Bench</div>
+                <div style={{display:"flex",justifyContent:"center",gap:10}}>{totmwBench.map(p=><TotmwDot key={p.id} p={p} isBench={true}/>)}</div>
+              </div>
+              <Btn onClick={()=>{setPicking(totmwSquad.picking);setSquadMode('own');}} variant="gold" style={{width:"100%",marginBottom:8}}>Use This Squad</Btn>
+              <div style={{fontSize:10,color:C.muted,textAlign:"center"}}>Loads the team of MW {totmwSquad.mw} into your builder so you can review and adjust</div>
             </div>
-            {pickerOptions.length===0
-              ?<div style={{color:C.muted,fontSize:12,textAlign:"center",padding:"12px 0"}}>All {pickerPos}s already selected</div>
-              :pickerOptions.map(p=>{
-                const cantAfford=p.cost>pickingRemaining;
-                const teamFull=(teamPickCounts[p.teamId]||0)>=3;
-                const disabled=cantAfford||teamFull;
-                return(
-                  <button key={p.id} onClick={()=>addToSlot(p)} disabled={disabled} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",marginBottom:6,cursor:disabled?'not-allowed':'pointer',opacity:disabled?0.38:1,textAlign:"left"}}>
-                    <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}</span>
-                    <span style={{fontSize:10,color:C.muted}}>{teamFull?`${p.teamName} (max 3)`:p.teamName}</span>
-                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold}}>{p.cost}</span>
-                  </button>
-                );
-              })
-            }
-          </div>
+          )
+        ):(
+          <>
+            {/* Header */}
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold,letterSpacing:1}}>Build Your Squad</div>
+                <div style={{fontSize:12,fontWeight:700,color:pickingRemaining<0?C.red:C.text}}>{pickingRemaining} cr left</div>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {['GK','DEF','MDF','FWD'].map(pos=>(
+                  <div key={pos} style={{background:posColor(pos)+'22',borderRadius:6,padding:"3px 10px",display:"flex",gap:4,alignItems:"center"}}>
+                    <span style={{fontSize:9,fontWeight:700,color:posColor(pos)}}>{pos}</span>
+                    <span style={{fontSize:12,fontWeight:700,color:pickCounts[pos]===REQUIRED[pos]?C.green:C.text}}>{pickCounts[pos]}/{REQUIRED[pos]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Pitch */}
+            <div style={{position:"relative",background:"linear-gradient(180deg,#1a7340 0%,#1e8a4a 40%,#1a7340 100%)",borderRadius:12,padding:"16px 8px",marginBottom:12,overflow:"hidden"}}>
+              <div style={{position:"absolute",top:"50%",left:"8%",right:"8%",height:1,background:"rgba(255,255,255,0.12)",transform:"translateY(-50%)"}}/>
+              <div style={{position:"absolute",top:"50%",left:"50%",width:54,height:54,borderRadius:"50%",border:"1px solid rgba(255,255,255,0.12)",transform:"translate(-50%,-50%)"}}/>
+              <div style={{position:"absolute",bottom:0,left:"28%",right:"28%",height:"16%",border:"1px solid rgba(255,255,255,0.1)",borderBottom:"none"}}/>
+              <div style={{position:"absolute",top:0,left:"28%",right:"28%",height:"16%",border:"1px solid rgba(255,255,255,0.1)",borderTop:"none"}}/>
+              {['FWD','MDF','DEF','GK'].map(pos=>(
+                <div key={pos} style={{display:"flex",justifyContent:"center",gap:pos==='GK'?0:8,marginBottom:pos==='GK'?0:14}}>
+                  {slotMap[pos].map((player,idx)=><PitchSlot key={idx} player={player} pos={pos} idx={idx}/>)}
+                </div>
+              ))}
+            </div>
+            {/* Player picker panel */}
+            {pickingSlot&&(
+              <div style={{background:C.card,border:`2px solid ${posColor(pickerPos)}`,borderRadius:12,padding:16,marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                  <div style={{fontWeight:700,fontSize:13,color:posColor(pickerPos)}}>Pick a {pickerPos}</div>
+                  <button onClick={()=>setPickingSlot(null)} style={{background:"none",border:"none",color:C.muted,fontSize:18,cursor:"pointer",lineHeight:1}}>×</button>
+                </div>
+                {pickerOptions.length===0
+                  ?<div style={{color:C.muted,fontSize:12,textAlign:"center",padding:"12px 0"}}>All {pickerPos}s already selected</div>
+                  :pickerOptions.map(p=>{
+                    const cantAfford=p.cost>pickingRemaining;
+                    const teamFull=(teamPickCounts[p.teamId]||0)>=3;
+                    const disabled=cantAfford||teamFull;
+                    return(
+                      <button key={p.id} onClick={()=>addToSlot(p)} disabled={disabled} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",marginBottom:6,cursor:disabled?'not-allowed':'pointer',opacity:disabled?0.38:1,textAlign:"left"}}>
+                        <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}</span>
+                        <span style={{fontSize:10,color:C.muted}}>{teamFull?`${p.teamName} (max 3)`:p.teamName}</span>
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold}}>{p.cost}</span>
+                      </button>
+                    );
+                  })
+                }
+              </div>
+            )}
+            {pickingRemaining<0&&<div style={{background:C.red+'22',border:`1px solid ${C.red}`,borderRadius:8,padding:"8px 12px",marginBottom:8,fontSize:11,color:C.red,textAlign:"center",fontWeight:700}}>Over budget by {Math.abs(pickingRemaining)} cr — remove a player</div>}
+            <Btn onClick={confirmSquad} disabled={!squadComplete||pickingRemaining<0||saving} variant="gold" style={{width:"100%"}}>{saving?'Saving…':'Confirm Squad'}</Btn>
+            <button onClick={()=>setSubView('tips')} style={{width:"100%",marginTop:10,background:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 0",fontSize:12,fontWeight:700,color:C.muted,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>View Tips before picking →</button>
+          </>
         )}
-        {pickingRemaining<0&&<div style={{background:C.red+'22',border:`1px solid ${C.red}`,borderRadius:8,padding:"8px 12px",marginBottom:8,fontSize:11,color:C.red,textAlign:"center",fontWeight:700}}>Over budget by {Math.abs(pickingRemaining)} cr — remove a player</div>}
-        <Btn onClick={confirmSquad} disabled={!squadComplete||pickingRemaining<0||saving} variant="gold" style={{width:"100%"}}>{saving?'Saving…':'Confirm Squad'}</Btn>
-        <button onClick={()=>setSubView('tips')} style={{width:"100%",marginTop:10,background:"none",border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 0",fontSize:12,fontWeight:700,color:C.muted,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>View Tips before picking →</button>
       </div>
     );
   }
