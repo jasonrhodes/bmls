@@ -667,7 +667,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
 
   const allPlayers=useMemo(()=>{
     const arr=[];
-    teams.forEach(t=>t.players.filter(p=>p.name).forEach(p=>arr.push({...p,teamName:t.name,teamColor:t.color,cost:fantasyPlayerCost(p,settings)})));
+    teams.forEach(t=>t.players.filter(p=>p.name).forEach(p=>arr.push({...p,teamId:t.id,teamName:t.name,teamColor:t.color,cost:fantasyPlayerCost(p,settings)})));
     return arr;
   },[teams,settings]);
 
