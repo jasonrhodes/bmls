@@ -159,6 +159,7 @@ function calcMatchRating(ps,position,result){
   }
   r-=y*0.5;
   if(red)r-=1.5;
+  r-=(ps.crucialMistakes||0)*1;
   if(result==='win')r+=0.5;
   else if(result==='loss')r-=0.5;
   return Math.min(10,Math.max(1,+r.toFixed(1)));
@@ -1856,6 +1857,7 @@ function ManageTab({teams,setTeams,fixtures,setFixtures,transfers,setTransfers,a
                           <div style={{fontSize:9,color:C.muted,letterSpacing:1,textTransform:"uppercase"}}>Red</div>
                           <button onClick={()=>updFixStat(editFix,playerId,"redCard",!ps.redCard)} style={{width:34,height:34,borderRadius:5,border:`1px solid ${ps.redCard?C.red:C.border}`,background:ps.redCard?`${C.red}33`:"transparent",color:ps.redCard?C.red:C.muted,cursor:"pointer",fontSize:16}}>🟥</button>
                         </div>
+                        <NumStepper label="Mistakes" value={ps.crucialMistakes||0} onChange={v=>updFixStat(editFix,playerId,"crucialMistakes",v)} color={C.red}/>
                         {player.position==="GK"&&<NumStepper label="Saves" value={ps.saves||0} onChange={v=>updFixStat(editFix,playerId,"saves",v)} color={C.purple}/>}
                         {player.position==="GK"&&<NumStepper label="Pen Saves" value={ps.penSaves||0} onChange={v=>updFixStat(editFix,playerId,"penSaves",v)} color={C.green}/>}
                         {player.position==="GK"&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
