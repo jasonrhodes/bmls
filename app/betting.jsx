@@ -967,35 +967,59 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
             <div>
               <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                  <div style={{fontSize:9,color:C.muted,letterSpacing:1}}>MW {lastMWData.mw} POINTS</div>
-                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:32,color:C.gold,lineHeight:1}}>{Math.round(lastMWData.total)}</div>
+                  <div style={{fontSize:9,color:C.muted,letterSpacing:1}}>MW {lastMWData.mw} TOTAL</div>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:32,color:C.gold,lineHeight:1}}>{Math.round(lastMWData.total)} pts</div>
                 </div>
                 <div style={{textAlign:"right",fontSize:10,color:C.muted}}>
                   {lastMWData.boostUsed&&<div style={{color:C.accent,fontWeight:700}}>{lastMWData.boostUsed==='benchBoost'?'Bench Boost':lastMWData.boostUsed==='tripleCaptain'?'Triple Captain':'Wildcard'}</div>}
                   {lastMWData.deduction>0&&<div style={{color:C.red}}>−{lastMWData.deduction} transfer pen.</div>}
                 </div>
               </div>
-              {['starting','bench'].map(section=>{
-                const ids=section==='starting'?lastMWData.scoringIds:lastMWData.squadPlayers.filter(p=>!lastMWData.scoringIds.includes(p.id)).map(p=>p.id);
-                return(
-                  <div key={section} style={{marginBottom:12}}>
-                    <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.muted,textTransform:"uppercase",marginBottom:6}}>{section==='starting'?'Starting 6':'Bench'}</div>
-                    {ids.map(pid=>{
-                      const p=lastMWData.squadPlayers.find(pl=>pl.id===pid);if(!p)return null;
-                      const pts=lastMWData.ptsMap[pid]??0;
-                      const isCap=pid===lastMWData.captain;
-                      return(
-                        <div key={pid} style={{display:"flex",alignItems:"center",gap:10,background:C.surface,borderRadius:8,padding:"9px 12px",marginBottom:5}}>
-                          <span style={{width:8,height:8,borderRadius:"50%",background:p.teamColor,flexShrink:0}}/>
-                          <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"1px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
-                          <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}{isCap&&<span style={{background:C.gold,color:"#000",borderRadius:3,padding:"0 4px",fontSize:8,fontWeight:900,marginLeft:5}}>C</span>}</span>
-                          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:pts>0?C.green:pts<0?C.red:C.muted}}>{pts>0?'+':''}{Math.round(pts)}</span>
+              {(()=>{
+                const lmwBench=lastMWData.squadPlayers.filter(p=>!lastMWData.scoringIds.includes(p.id));
+                const lmwStarting=lastMWData.scoringIds.map(id=>lastMWData.squadPlayers.find(p=>p.id===id)).filter(Boolean);
+                const byPos=pos=>lmwStarting.filter(p=>p.position===pos);
+                const LastDot=({p})=>{
+                  const pts=lastMWData.ptsMap[p.id]??0;
+                  const isCap=p.id===lastMWData.captain;
+                  const surname=(p.name||'').trim().split(/\s+/).pop();
+                  return(
+                    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,minWidth:52}}>
+                      <div style={{position:"relative"}}>
+                        <div style={{width:42,height:42,borderRadius:"50%",background:p.teamColor||C.accent,border:`2.5px solid ${p.teamColor||C.accent}`,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 8px ${p.teamColor||C.accent}55`}}>
+                          <span style={{fontSize:8,fontWeight:700,color:"#fff"}}>{p.position}</span>
                         </div>
-                      );
-                    })}
+                        {isCap&&<div style={{position:"absolute",top:-4,right:-4,width:15,height:15,borderRadius:"50%",background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:900,color:"#000"}}>C</div>}
+                      </div>
+                      <span style={{fontSize:9,color:"#fff",fontWeight:700,textAlign:"center",maxWidth:52,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textShadow:"0 1px 3px rgba(0,0,0,0.9)"}}>{surname}</span>
+                      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:pts>0?C.green:pts<0?C.red:C.muted,lineHeight:1}}>{pts>0?'+':''}{Math.round(pts)}</span>
+                    </div>
+                  );
+                };
+                return(
+                  <div style={{background:"#14532d",border:"1px solid #166534",borderRadius:12,padding:"16px 8px"}}>
+                    <div style={{textAlign:"center",fontSize:8,color:"#4ade80",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Starting 6</div>
+                    {['FWD','MDF','DEF','GK'].map(pos=>{const row=byPos(pos);if(!row.length)return null;return<div key={pos} style={{display:"flex",justifyContent:"center",gap:12,marginBottom:12,flexWrap:"wrap"}}>{row.map(p=><LastDot key={p.id} p={p}/>)}</div>;})}
+                    <div style={{height:1,background:"#166534",margin:"10px 0"}}/>
+                    <div style={{textAlign:"center",fontSize:8,color:"#4ade8066",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Bench</div>
+                    <div style={{display:"flex",justifyContent:"center",gap:12,flexWrap:"wrap"}}>
+                      {lmwBench.map(p=>{
+                        const pts=lastMWData.ptsMap[p.id]??0;
+                        const surname=(p.name||'').trim().split(/\s+/).pop();
+                        return(
+                          <div key={p.id} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,minWidth:48}}>
+                            <div style={{width:36,height:36,borderRadius:"50%",background:'transparent',border:`2px dashed ${p.teamColor||C.accent}`,opacity:0.7,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <span style={{fontSize:7,fontWeight:700,color:C.muted}}>{p.position}</span>
+                            </div>
+                            <span style={{fontSize:8,color:"rgba(255,255,255,0.6)",fontWeight:600,textAlign:"center",maxWidth:48,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{surname}</span>
+                            <span style={{fontSize:10,fontWeight:700,color:pts>0?C.green:pts<0?C.red:C.muted}}>{pts>0?'+':''}{Math.round(pts)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
-              })}
+              })()}
             </div>
           )}
 
