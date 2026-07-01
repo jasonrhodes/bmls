@@ -1109,93 +1109,95 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
         </div>
       )}
 
-      {subView==='transfers'&&(
-        <div>
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
-              <div style={{fontSize:12,fontWeight:700,color:C.text}}>Free transfers: <span style={{color:C.gold}}>{freeTransfers}</span></div>
-              {pendingTransfers.length>0&&<div style={{fontSize:11,color:C.muted,marginTop:2}}>Made this MW: {pendingTransfers.length}</div>}
-            </div>
-            {deduction>0&&<div style={{fontSize:12,color:'#f97316',fontWeight:700}}>−{deduction} pts</div>}
-          </div>
-          {activeBoost==='wildcard'&&<div style={{background:C.gold+'22',border:`1px solid ${C.gold}`,borderRadius:8,padding:"8px 12px",fontSize:11,color:C.gold,fontWeight:700,marginBottom:12}}>WILDCARD ACTIVE — all transfers free</div>}
-
-          {!transferOut?(
-            <>
-              <SLabel>Select player to transfer out</SLabel>
-              {squadPlayers.map(p=>{const nxt=nextOpponent(p.teamId);const ppts=anyMWPlayed?(playerRawPts[p.id]??0):null;const st=mwStatus(p.teamId);return(
-                <button key={p.id} onClick={()=>setTransferOut(p.id)} style={{display:"flex",alignItems:"center",gap:8,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer",textAlign:"left"}}>
-                  <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}{nxt&&<span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:5}}>{nxt}</span>}</div>
-                  </div>
-                  {st&&<span style={{fontSize:9,fontWeight:700,color:st.label==='To Play'?'#000':C.text,background:st.label==='To Play'?C.gold:'#374151',borderRadius:5,padding:"1px 5px",flexShrink:0}}>{st.label}</span>}
-                  {ppts!=null&&<span style={{fontSize:10,fontWeight:700,color:ppts<0?C.red:ppts===0?C.muted:C.green,flexShrink:0}}>{ppts>0?'+':''}{ppts}pts</span>}
-                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.gold,flexShrink:0}}>{p.cost}</span>
-                </button>
-              );})}
-            </>
-          ):(()=>{
-            const outPlayer=squadPlayers.find(p=>p.id===transferOut);
-            const effectiveSquad=new Set(squad);
-            pendingTransfers.forEach(t=>{effectiveSquad.delete(t.outId);effectiveSquad.add(t.inId);});
-            const budgetUsed=allPlayers.filter(p=>effectiveSquad.has(p.id)).reduce((s,p)=>s+p.cost,0);
-            const budgetLeft=BUDGET-budgetUsed+(outPlayer?.cost||0);
-            const effectiveTeamCounts=allPlayers.filter(p=>effectiveSquad.has(p.id)&&p.id!==transferOut).reduce((m,p)=>{m[p.teamId]=(m[p.teamId]||0)+1;return m;},{});
-            const available=allPlayers.filter(p=>!effectiveSquad.has(p.id)&&p.id!==transferOut&&p.position===outPlayer?.position&&p.cost<=budgetLeft&&(effectiveTeamCounts[p.teamId]||0)<3).sort((a,b)=>b.cost-a.cost);
-            return(
-              <>
-                <div style={{background:C.red+'22',border:`1px solid ${C.red}`,borderRadius:10,padding:"12px 14px",marginBottom:16}}>
-                  <div style={{fontSize:10,color:C.muted,marginBottom:4}}>Transferring out</div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{background:posColor(outPlayer?.position)+'33',color:posColor(outPlayer?.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700}}>{outPlayer?.position}</span>
-                    <span style={{fontSize:14,fontWeight:700,color:C.red,flex:1}}>{outPlayer?.name}</span>
-                    <button onClick={()=>setTransferOut(null)} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:18,padding:0}}>✕</button>
-                  </div>
+      {subView==='transfers'&&(()=>{
+        const xfSquadIds=squad.map(id=>{const t=pendingTransfers.find(pt=>pt.outId===id);return t?t.inId:id;});
+        const xfStarting=localStarting.map(id=>allPlayers.find(p=>p.id===id)).filter(Boolean);
+        const xfBench=xfSquadIds.filter(id=>!localStarting.includes(id)).map(id=>allPlayers.find(p=>p.id===id)).filter(Boolean);
+        const pendingInIds=new Set(pendingTransfers.map(t=>t.inId));
+        const handleDotClick=p=>{
+          const isPendingIn=pendingInIds.has(p.id);
+          if(transferOut===p.id){setTransferOut(null);return;}
+          if(isPendingIn){
+            const t=pendingTransfers.find(pt=>pt.inId===p.id);
+            if(t){setPendingTransfers(prev=>prev.filter(pt=>pt.inId!==p.id));if(localStarting.includes(p.id))setLocalStarting(prev=>prev.map(id=>id===p.id?t.outId:id));}
+            return;
+          }
+          setTransferOut(p.id);
+        };
+        const TrDot=(p,isBench=false)=>{
+          const isPendingIn=pendingInIds.has(p.id);
+          const isOut=transferOut===p.id;
+          const surname=(p.name||'').trim().split(/\s+/).pop();
+          const sz=isBench?34:42;
+          return(
+            <div key={p.id} onClick={()=>handleDotClick(p)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,cursor:"pointer",minWidth:isBench?44:52,position:"relative",userSelect:"none"}}>
+              <div style={{position:"relative"}}>
+                <div style={{width:sz,height:sz,borderRadius:"50%",background:isOut?`${C.red}99`:p.teamColor,border:`2.5px solid ${isOut?C.red:isPendingIn?C.green:p.teamColor}`,boxShadow:isPendingIn?`0 0 10px ${C.green}88`:isOut?`0 0 10px ${C.red}88`:`0 2px 6px ${p.teamColor}55`,display:"flex",alignItems:"center",justifyContent:"center",opacity:isOut?0.65:1,transition:"all 0.15s"}}>
+                  <span style={{fontSize:isBench?7:8,fontWeight:700,color:isLight(p.teamColor||'')?'#000':'#fff'}}>{p.position}</span>
                 </div>
-                <SLabel>Select replacement ({outPlayer?.position})</SLabel>
-                {available.length===0&&<div style={{color:C.muted,fontSize:12,padding:"20px 0",textAlign:"center"}}>No eligible players within budget</div>}
-                {available.map(p=>{const nxt=nextOpponent(p.teamId);const ppts=anyMWPlayed?(playerRawPts[p.id]??0):null;const st=mwStatus(p.teamId);return(
-                  <button key={p.id} onClick={()=>{
-                    setPendingTransfers(prev=>[...prev,{outId:transferOut,inId:p.id}]);
-                    if(localStarting.includes(transferOut))setLocalStarting(prev=>prev.map(id=>id===transferOut?p.id:id));
-                    if(localCaptain===transferOut)setLocalCaptain(null);
-                    setTransferOut(null);
-                  }} style={{display:"flex",alignItems:"center",gap:8,width:"100%",background:C.surface,border:`1px solid ${C.green}44`,borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer",textAlign:"left"}}>
-                    <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}{nxt&&<span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:5}}>{nxt}</span>}</div>
-                    </div>
-                    {st&&<span style={{fontSize:9,fontWeight:700,color:st.label==='To Play'?'#000':C.text,background:st.label==='To Play'?C.gold:'#374151',borderRadius:5,padding:"1px 5px",flexShrink:0}}>{st.label}</span>}
-                    {ppts!=null&&<span style={{fontSize:10,fontWeight:700,color:ppts<0?C.red:ppts===0?C.muted:C.green,flexShrink:0}}>{ppts>0?'+':''}{ppts}pts</span>}
-                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.green,flexShrink:0}}>{p.cost}</span>
-                  </button>
-                );})}
-              </>
-            );
-          })()}
-
-          {pendingTransfers.length>0&&(
-            <div style={{marginTop:16,background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:12}}>
-              <div style={{fontSize:10,fontWeight:700,color:C.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Pending</div>
-              {pendingTransfers.map((t,i)=>{
-                const out=allPlayers.find(p=>p.id===t.outId),inn=allPlayers.find(p=>p.id===t.inId);
-                return(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,marginBottom:4}}>
-                    <span style={{color:C.red,flex:1}}>{out?.name}</span>
-                    <span style={{color:C.muted}}>→</span>
-                    <span style={{color:C.green,flex:1}}>{inn?.name}</span>
-                    <button onClick={()=>{
-                      setPendingTransfers(prev=>prev.filter((_,j)=>j!==i));
-                      if(localStarting.includes(t.inId))setLocalStarting(prev=>prev.map(id=>id===t.inId?t.outId:id));
-                    }} style={{background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:12,padding:0}}>✕</button>
-                  </div>
-                );
-              })}
+                {isPendingIn&&<div style={{position:"absolute",top:-5,right:-6,background:C.green,color:"#000",borderRadius:3,fontSize:6,fontWeight:900,padding:"1px 3px",lineHeight:1.3,pointerEvents:"none"}}>NEW</div>}
+                {isOut&&<div style={{position:"absolute",top:-5,right:-6,background:C.red,color:"#fff",borderRadius:3,fontSize:6,fontWeight:900,padding:"1px 3px",lineHeight:1.3,pointerEvents:"none"}}>OUT</div>}
+              </div>
+              <span style={{fontSize:isBench?8:9,fontWeight:600,color:isOut?C.red:isPendingIn?C.green:C.text,maxWidth:isBench?44:52,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{surname}</span>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:9,color:C.gold,lineHeight:1}}>{p.cost}cr</span>
             </div>
-          )}
-        </div>
-      )}
+          );
+        };
+        return(
+          <div>
+            <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:700,color:C.text}}>Free transfers: <span style={{color:C.gold}}>{freeTransfers}</span></div>
+                {pendingTransfers.length>0&&<div style={{fontSize:11,color:C.muted,marginTop:2}}>{pendingTransfers.length} pending — tap NEW players to undo</div>}
+              </div>
+              {deduction>0&&<div style={{fontSize:12,color:'#f97316',fontWeight:700}}>−{deduction} pts penalty</div>}
+            </div>
+            {activeBoost==='wildcard'&&<div style={{background:C.gold+'22',border:`1px solid ${C.gold}`,borderRadius:8,padding:"8px 12px",fontSize:11,color:C.gold,fontWeight:700,marginBottom:12}}>WILDCARD ACTIVE — all transfers free</div>}
+            <div style={{background:"#14532d",border:"1px solid #166534",borderRadius:12,padding:"14px 8px",marginBottom:12}}>
+              <div style={{textAlign:"center",fontSize:8,color:"#4ade80aa",letterSpacing:2,textTransform:"uppercase",marginBottom:10}}>Tap a player to transfer them out</div>
+              {['FWD','MDF','DEF','GK'].map(pos=>{const row=xfStarting.filter(p=>p.position===pos);if(!row.length)return null;return<div key={pos} style={{display:"flex",justifyContent:"center",gap:10,marginBottom:12,flexWrap:"wrap"}}>{row.map(p=>TrDot(p,false))}</div>;})}
+              {xfStarting.filter(p=>!['GK','DEF','MDF','FWD'].includes(p.position)).map(p=>TrDot(p,false))}
+              <div style={{height:1,background:"#166534",margin:"6px 0 10px"}}/>
+              <div style={{textAlign:"center",fontSize:8,color:"#4ade8055",letterSpacing:2,textTransform:"uppercase",marginBottom:8}}>Bench</div>
+              <div style={{display:"flex",justifyContent:"center",gap:10,flexWrap:"wrap"}}>{xfBench.map(p=>TrDot(p,true))}</div>
+            </div>
+            {transferOut&&(()=>{
+              const outPlayer=allPlayers.find(p=>p.id===transferOut);
+              const effectiveSquadSet=new Set(xfSquadIds);
+              const budgetUsed=allPlayers.filter(p=>effectiveSquadSet.has(p.id)).reduce((s,p)=>s+p.cost,0);
+              const budgetLeft=BUDGET-budgetUsed+(outPlayer?.cost||0);
+              const effTeamCounts=allPlayers.filter(p=>effectiveSquadSet.has(p.id)&&p.id!==transferOut).reduce((m,p)=>{m[p.teamId]=(m[p.teamId]||0)+1;return m;},{});
+              const available=allPlayers.filter(p=>!effectiveSquadSet.has(p.id)&&p.id!==transferOut&&p.position===outPlayer?.position&&p.cost<=budgetLeft&&(effTeamCounts[p.teamId]||0)<3).sort((a,b)=>b.cost-a.cost);
+              return(
+                <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:14,marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,paddingBottom:10,borderBottom:`1px solid ${C.border}33`}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:10,color:C.muted,marginBottom:2}}>Transferring out</div>
+                      <div style={{fontSize:14,fontWeight:700,color:C.red}}>{outPlayer?.name}</div>
+                      <div style={{fontSize:11,color:C.muted}}>{outPlayer?.position} · {outPlayer?.cost}cr · Budget left: {budgetLeft.toFixed(1)}cr</div>
+                    </div>
+                    <button onClick={()=>setTransferOut(null)} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:700,color:C.muted,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>Undo</button>
+                  </div>
+                  <div style={{fontSize:10,color:C.muted,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Choose replacement ({outPlayer?.position})</div>
+                  {available.length===0&&<div style={{color:C.muted,fontSize:12,padding:"16px 0",textAlign:"center"}}>No eligible players within budget</div>}
+                  {available.map(p=>{const nxt=nextOpponent(p.teamId);const ppts=anyMWPlayed?(playerRawPts[p.id]??0):null;const st=mwStatus(p.teamId);return(
+                    <button key={p.id} onClick={()=>{setPendingTransfers(prev=>[...prev,{outId:transferOut,inId:p.id}]);if(localStarting.includes(transferOut))setLocalStarting(prev=>prev.map(id=>id===transferOut?p.id:id));if(localCaptain===transferOut)setLocalCaptain(null);setTransferOut(null);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",background:C.surface,border:`1px solid ${C.green}44`,borderRadius:8,padding:"10px 12px",marginBottom:6,cursor:"pointer",textAlign:"left"}}>
+                      <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"2px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}{nxt&&<span style={{fontSize:10,color:C.muted,fontWeight:400,marginLeft:5}}>{nxt}</span>}</div>
+                        <div style={{fontSize:10,color:C.muted}}>{allPlayers.find(q=>q.id===p.id)?.teamName||''}</div>
+                      </div>
+                      {st&&<span style={{fontSize:9,fontWeight:700,color:st.label==='To Play'?'#000':C.text,background:st.label==='To Play'?C.gold:'#374151',borderRadius:5,padding:"1px 5px",flexShrink:0}}>{st.label}</span>}
+                      {ppts!=null&&<span style={{fontSize:10,fontWeight:700,color:ppts<0?C.red:ppts===0?C.muted:C.green,flexShrink:0}}>{ppts>0?'+':''}{ppts}pts</span>}
+                      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:C.green,flexShrink:0}}>{p.cost}cr</span>
+                    </button>
+                  );})}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
 
       {subView==='tips'&&(()=>{
         const pts=settings.points||DEFAULT_SETTINGS.points;
