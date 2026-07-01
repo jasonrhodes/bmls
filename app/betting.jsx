@@ -655,6 +655,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   const[pendingTransfers,setPendingTransfers]=useState([]);
   const[saving,setSaving]=useState(false);
   const[pickingSlot,setPickingSlot]=useState(null);
+  const[teamView,setTeamView]=useState('upcoming');
   const isLocked=!!(userData.fantasyHistory||{})[String(currentMW)];
   const freeTransfers=userData.freeTransfers??1;
   const boosts=userData.boostsAvailable||{benchBoost:true,tripleCaptain:true,wildcard:true};
@@ -765,6 +766,25 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
     });
     return m;
   },[fixtures,teams,squad,settings]);
+  const lastPlayedMW=useMemo(()=>{const mws=fixtures.filter(f=>f.played&&f.matchWeek!=null).map(f=>f.matchWeek);return mws.length?Math.max(...mws):null;},[fixtures]);
+  const lastMWData=useMemo(()=>{
+    if(lastPlayedMW==null)return null;
+    const hist=(userData.fantasyHistory||{})[String(lastPlayedMW)]||{};
+    const scoringIds=hist.boostUsed==='benchBoost'?squad:(hist.starting?.length?hist.starting:squad);
+    const captain=hist.captain||null;
+    const mwF=fixtures.filter(f=>f.played&&f.matchWeek===lastPlayedMW);
+    const pts=settings.points||DEFAULT_SETTINGS.points;
+    const allP={};teams.forEach(t=>t.players.forEach(p=>{allP[p.id]={...p,teamId:t.id,teamName:t.name,teamColor:t.color};}));
+    const mwRatings=[];
+    mwF.forEach(f=>{(f.playerStats||[]).forEach(ps=>{const pl=allP[ps.playerId];if(!pl)return;const ih=f.homeId===pl.teamId;if(!ih&&f.awayId!==pl.teamId)return;const res=ih?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');mwRatings.push({playerId:ps.playerId,rating:calcMatchRating(ps,pl.position,res)});});});
+    const top5=new Set(mwRatings.sort((a,b)=>b.rating-a.rating).slice(0,5).map(r=>r.playerId));
+    const ptsMap={};
+    scoringIds.forEach(pid=>{const player=allP[pid];if(!player)return;const score=scorePlayer(pid,player,mwF,pts,top5);const mult=pid===captain?(hist.boostUsed==='tripleCaptain'?3:2):1;ptsMap[pid]=score*mult;});
+    const allSquadPts={};
+    squad.forEach(pid=>{const player=allP[pid];if(!player)return;if(ptsMap[pid]!=null){allSquadPts[pid]=ptsMap[pid];return;}const score=scorePlayer(pid,player,mwF,pts,top5);allSquadPts[pid]=score;});
+    const total=scoringIds.reduce((s,pid)=>s+(ptsMap[pid]||0),0)-(hist.transferDeduction||0);
+    return{mw:lastPlayedMW,ptsMap:allSquadPts,scoringIds,captain,total,deduction:hist.transferDeduction||0,boostUsed:hist.boostUsed||null,squadPlayers:squad.map(pid=>allP[pid]).filter(Boolean)};
+  },[lastPlayedMW,userData.fantasyHistory,squad,fixtures,teams,settings]);
   const nextOpponent=useMemo(()=>(teamId)=>{
     const up=fixtures.filter(f=>!f.played&&(f.homeId===teamId||f.awayId===teamId)).sort((a,b)=>(a.matchWeek||0)-(b.matchWeek||0));
     if(!up.length)return null;
@@ -935,6 +955,52 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
 
       {subView==='team'&&(
         <div>
+          {/* Last MW / Upcoming toggle */}
+          <div style={{display:"flex",background:C.surface,borderRadius:10,padding:3,marginBottom:12}}>
+            {[['upcoming',`MW ${currentMW} (Upcoming)`],['lastmw',`MW ${lastPlayedMW??'—'} (Last)`]].map(([k,l])=>(
+              <button key={k} onClick={()=>setTeamView(k)} disabled={k==='lastmw'&&!lastMWData} style={{flex:1,background:teamView===k?C.card:'transparent',border:'none',borderRadius:8,padding:'7px 0',fontSize:11,fontWeight:700,color:teamView===k?C.gold:C.muted,cursor:k==='lastmw'&&!lastMWData?'not-allowed':'pointer',fontFamily:"'DM Sans',sans-serif",opacity:k==='lastmw'&&!lastMWData?0.4:1}}>{l}</button>
+            ))}
+          </div>
+
+          {/* Last MW view */}
+          {teamView==='lastmw'&&lastMWData&&(
+            <div>
+              <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:9,color:C.muted,letterSpacing:1}}>MW {lastMWData.mw} POINTS</div>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:32,color:C.gold,lineHeight:1}}>{Math.round(lastMWData.total)}</div>
+                </div>
+                <div style={{textAlign:"right",fontSize:10,color:C.muted}}>
+                  {lastMWData.boostUsed&&<div style={{color:C.accent,fontWeight:700}}>{lastMWData.boostUsed==='benchBoost'?'Bench Boost':lastMWData.boostUsed==='tripleCaptain'?'Triple Captain':'Wildcard'}</div>}
+                  {lastMWData.deduction>0&&<div style={{color:C.red}}>−{lastMWData.deduction} transfer pen.</div>}
+                </div>
+              </div>
+              {['starting','bench'].map(section=>{
+                const ids=section==='starting'?lastMWData.scoringIds:lastMWData.squadPlayers.filter(p=>!lastMWData.scoringIds.includes(p.id)).map(p=>p.id);
+                return(
+                  <div key={section} style={{marginBottom:12}}>
+                    <div style={{fontSize:9,fontWeight:700,letterSpacing:2,color:C.muted,textTransform:"uppercase",marginBottom:6}}>{section==='starting'?'Starting 6':'Bench'}</div>
+                    {ids.map(pid=>{
+                      const p=lastMWData.squadPlayers.find(pl=>pl.id===pid);if(!p)return null;
+                      const pts=lastMWData.ptsMap[pid]??0;
+                      const isCap=pid===lastMWData.captain;
+                      return(
+                        <div key={pid} style={{display:"flex",alignItems:"center",gap:10,background:C.surface,borderRadius:8,padding:"9px 12px",marginBottom:5}}>
+                          <span style={{width:8,height:8,borderRadius:"50%",background:p.teamColor,flexShrink:0}}/>
+                          <span style={{background:posColor(p.position)+'33',color:posColor(p.position),borderRadius:3,padding:"1px 5px",fontSize:9,fontWeight:700,flexShrink:0}}>{p.position}</span>
+                          <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}{isCap&&<span style={{background:C.gold,color:"#000",borderRadius:3,padding:"0 4px",fontSize:8,fontWeight:900,marginLeft:5}}>C</span>}</span>
+                          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:pts>0?C.green:pts<0?C.red:C.muted}}>{pts>0?'+':''}{Math.round(pts)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Upcoming MW view */}
+          {teamView==='upcoming'&&<div>
           {/* Status bar */}
           <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
             <div>
@@ -999,6 +1065,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
           {isLocked&&hasEmergencyUnlock&&<button onClick={unlockLineup} disabled={saving} style={{display:"block",width:"100%",marginTop:6,background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",fontSize:11,color:C.muted,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>🔓 Emergency Unlock <span style={{color:C.gold,fontWeight:700}}>(1 use remaining)</span></button>}
           {isLocked&&!hasEmergencyUnlock&&<div style={{fontSize:10,color:C.muted,textAlign:"center",marginTop:6}}>Emergency unlock already used this season</div>}
           {!isLocked&&<button onClick={()=>setSubView('squad')} style={{background:"none",border:"none",color:C.muted,fontSize:11,cursor:"pointer",marginTop:8,display:"block",width:"100%",textAlign:"center"}}>Change squad</button>}
+          </div>}
         </div>
       )}
 
