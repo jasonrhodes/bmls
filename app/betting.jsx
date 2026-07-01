@@ -1234,41 +1234,89 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
         );
       })()}
 
-      {subView==='points'&&(
-        <div>
-          <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:16,textAlign:"center"}}>
-            <div style={{fontSize:10,color:C.muted,letterSpacing:1,textTransform:"uppercase"}}>Season Total</div>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:52,color:C.gold,lineHeight:1}}>{Math.round(totalPoints)}</div>
-            <div style={{fontSize:11,color:C.muted}}>fantasy points</div>
-          </div>
-          {breakdown.length===0&&<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:32}}>No points yet — lock your lineup before matchweek begins</div>}
-          {breakdown.map(mwRow=>(
-            <div key={mwRow.mw} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:700,color:C.text}}>Match Week {mwRow.mw}</div>
-                  {mwRow.captain&&<div style={{fontSize:10,color:C.gold}}>C: {mwRow.captain}{mwRow.boostUsed==='tripleCaptain'?' (3×)':' (2×)'}</div>}
-                  {mwRow.boostUsed&&mwRow.boostUsed!=='tripleCaptain'&&<div style={{fontSize:10,color:C.accent}}>{mwRow.boostUsed==='benchBoost'?'Bench Boost':'Wildcard'} used</div>}
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:C.gold}}>{Math.round(mwRow.pts)}</div>
-                  {mwRow.deduction>0&&<div style={{fontSize:10,color:C.red}}>−{mwRow.deduction} transfers</div>}
-                </div>
-              </div>
-              {mwRow.details.map((d,i)=>(
-                <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted,padding:"3px 0",borderTop:i===0?`1px solid ${C.border}33`:"none"}}>
-                  <span style={{display:"flex",alignItems:"center",gap:4}}>
-                    {d.isCaptain&&<span style={{background:C.gold,color:"#000",borderRadius:3,padding:"0 4px",fontSize:8,fontWeight:900,flexShrink:0}}>C</span>}
-                    {d.topRated&&<span style={{color:C.gold,fontSize:9}}>★</span>}
-                    {d.playerName}
-                  </span>
-                  <span style={{color:d.pts>0?C.green:d.pts<0?C.red:C.muted}}>{d.pts>0?'+':''}{Math.round(d.pts)}</span>
-                </div>
+      {subView==='points'&&(()=>{
+        const[ptView,setPtView]=useState('mine');
+        const[mwSel,setMwSel]=useState(null);
+        const[posFil,setPosFil]=useState('all');
+        const playedMWs=[...new Set(fixtures.filter(f=>f.played&&f.matchWeek!=null).map(f=>f.matchWeek))].sort((a,b)=>a-b);
+        const activeMW=mwSel??playedMWs[playedMWs.length-1]??null;
+        const pts=settings.points||DEFAULT_SETTINGS.points;
+        const mwLeaderboard=useMemo(()=>{
+          if(activeMW==null)return[];
+          const allP={};teams.forEach(t=>t.players.forEach(p=>{if(p.name)allP[p.id]={...p,teamId:t.id,teamName:t.name,teamColor:t.color};}));
+          const mwF=fixtures.filter(f=>f.played&&f.matchWeek===activeMW);
+          const mwRatings=[];
+          mwF.forEach(f=>{(f.playerStats||[]).forEach(ps=>{const pl=allP[ps.playerId];if(!pl)return;const ih=f.homeId===pl.teamId;if(!ih&&f.awayId!==pl.teamId)return;const res=ih?(f.homeScore>f.awayScore?'win':f.homeScore<f.awayScore?'loss':'draw'):(f.awayScore>f.homeScore?'win':f.awayScore<f.homeScore?'loss':'draw');mwRatings.push({playerId:ps.playerId,rating:calcMatchRating(ps,pl.position,res)});});});
+          const top5=new Set(mwRatings.sort((a,b)=>b.rating-a.rating).slice(0,5).map(r=>r.playerId));
+          return Object.values(allP).map(p=>({...p,pts:scorePlayer(p.id,p,mwF,pts,top5)})).filter(p=>p.pts!==0).sort((a,b)=>b.pts-a.pts);
+        },[activeMW,fixtures,teams,pts]);
+        const filtered=posFil==='all'?mwLeaderboard:mwLeaderboard.filter(p=>p.position===posFil);
+        return(
+          <div>
+            <div style={{display:"flex",background:C.surface,borderRadius:10,padding:3,marginBottom:16}}>
+              {[['mine','My Points'],['mw','MW Top Scorers']].map(([k,l])=>(
+                <button key={k} onClick={()=>setPtView(k)} style={{flex:1,background:ptView===k?C.card:'transparent',border:'none',borderRadius:8,padding:'8px 0',fontSize:12,fontWeight:700,color:ptView===k?C.gold:C.muted,cursor:'pointer',fontFamily:"'DM Sans',sans-serif"}}>{l}</button>
               ))}
             </div>
-          ))}
-        </div>
-      )}
+            {ptView==='mine'&&(
+              <>
+                <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16,marginBottom:16,textAlign:"center"}}>
+                  <div style={{fontSize:10,color:C.muted,letterSpacing:1,textTransform:"uppercase"}}>Season Total</div>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:52,color:C.gold,lineHeight:1}}>{Math.round(totalPoints)}</div>
+                  <div style={{fontSize:11,color:C.muted}}>fantasy points</div>
+                </div>
+                {breakdown.length===0&&<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:32}}>No points yet — lock your lineup before matchweek begins</div>}
+                {breakdown.map(mwRow=>(
+                  <div key={mwRow.mw} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:"12px 14px",marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:C.text}}>Match Week {mwRow.mw}</div>
+                        {mwRow.captain&&<div style={{fontSize:10,color:C.gold}}>C: {mwRow.captain}{mwRow.boostUsed==='tripleCaptain'?' (3×)':' (2×)'}</div>}
+                        {mwRow.boostUsed&&mwRow.boostUsed!=='tripleCaptain'&&<div style={{fontSize:10,color:C.accent}}>{mwRow.boostUsed==='benchBoost'?'Bench Boost':'Wildcard'} used</div>}
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:C.gold}}>{Math.round(mwRow.pts)}</div>
+                        {mwRow.deduction>0&&<div style={{fontSize:10,color:C.red}}>−{mwRow.deduction} transfers</div>}
+                      </div>
+                    </div>
+                    {mwRow.details.map((d,i)=>(
+                      <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.muted,padding:"3px 0",borderTop:i===0?`1px solid ${C.border}33`:"none"}}>
+                        <span style={{display:"flex",alignItems:"center",gap:4}}>
+                          {d.isCaptain&&<span style={{background:C.gold,color:"#000",borderRadius:3,padding:"0 4px",fontSize:8,fontWeight:900,flexShrink:0}}>C</span>}
+                          {d.topRated&&<span style={{color:C.gold,fontSize:9}}>★</span>}
+                          {d.playerName}
+                        </span>
+                        <span style={{color:d.pts>0?C.green:d.pts<0?C.red:C.muted}}>{d.pts>0?'+':''}{Math.round(d.pts)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </>
+            )}
+            {ptView==='mw'&&(
+              <>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                  {playedMWs.map(mw=><button key={mw} onClick={()=>setMwSel(mw)} style={{background:activeMW===mw?C.accent:C.surface,color:activeMW===mw?C.white:C.muted,border:`1px solid ${activeMW===mw?C.accent:C.border}`,borderRadius:20,padding:"4px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>MW {mw}</button>)}
+                </div>
+                <div style={{display:"flex",gap:6,marginBottom:14}}>
+                  {['all','GK','DEF','MDF','FWD'].map(pos=><button key={pos} onClick={()=>setPosFil(pos)} style={{background:posFil===pos?C.card:C.surface,color:posFil===pos?C.white:C.muted,border:`1px solid ${posFil===pos?C.accent:C.border}`,borderRadius:20,padding:"4px 12px",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'DM Sans',sans-serif"}}>{pos==='all'?'All':pos}</button>)}
+                </div>
+                {playedMWs.length===0?<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:32}}>No matchweeks played yet</div>:filtered.length===0?<div style={{textAlign:"center",color:C.muted,fontSize:12,padding:20}}>No scorers this MW{posFil!=='all'?` for ${posFil}`:''}</div>:filtered.map((p,i)=>(
+                  <div key={p.id} style={{background:C.card,border:`1px solid ${i===0?C.gold+'66':C.border}`,borderRadius:10,padding:"11px 14px",marginBottom:7,display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:i===0?24:16,color:i===0?C.gold:C.muted,minWidth:22,textAlign:"center"}}>{i+1}</span>
+                    <span style={{width:8,height:8,borderRadius:"50%",background:p.teamColor,flexShrink:0}}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,color:C.text}}>{p.name}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{p.teamName} · {p.position}</div>
+                    </div>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:i===0?28:20,color:p.pts>0?C.green:C.red,lineHeight:1}}>{p.pts>0?'+':''}{p.pts}</span>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
