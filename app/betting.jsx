@@ -1337,6 +1337,19 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
                 })}
               </div>
             )}
+            {pendingTransfers.length>0&&(
+              <Btn onClick={async()=>{
+                setSaving(true);
+                const newFT=activeBoost==='wildcard'?freeTransfers:Math.max(0,freeTransfers-Math.max(0,pendingTransfers.length-freeTransfers));
+                let newSquad=[...squad];
+                pendingTransfers.forEach(({outId,inId})=>{newSquad=newSquad.map(id=>id===outId?inId:id);});
+                await onSaveFantasy({squad:newSquad,history:userData.fantasyHistory||{},freeTransfers:newFT,boostsAvailable:boosts});
+                setSaving(false);
+                setPendingTransfers([]);
+                setTransferOut(null);
+              }} disabled={saving} variant="gold" style={{width:'100%',marginTop:4}}>{saving?'Saving…':`Save ${pendingTransfers.length} Transfer${pendingTransfers.length!==1?'s':''}`}</Btn>
+            )}
+            {deduction>0&&<div style={{fontSize:11,color:'#f97316',textAlign:'center',marginTop:6}}>−{deduction} pts deduction will apply when you lock your lineup</div>}
           </div>
         );
       })()}
