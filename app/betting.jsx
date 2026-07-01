@@ -732,7 +732,8 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
     if(!canLock)return;
     setSaving(true);
     const hist={...(userData.fantasyHistory||{})};
-    hist[String(currentMW)]={starting:localStarting,captain:localCaptain,boostUsed:activeBoost,transferDeduction:deduction};
+    const prevDeduction=(hist[String(currentMW)]||{}).transferDeduction||0;
+    hist[String(currentMW)]={...(hist[String(currentMW)]||{}),starting:localStarting,captain:localCaptain,boostUsed:activeBoost,transferDeduction:prevDeduction+deduction};
     const newFT=activeBoost==='wildcard'?1:Math.min(2,Math.max(1,freeTransfers-pendingTransfers.length+1));
     const newBoosts={...boosts};
     if(activeBoost)newBoosts[activeBoost]=false;
@@ -1337,10 +1338,13 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
             {pendingTransfers.length>0&&(
               <Btn onClick={async()=>{
                 setSaving(true);
-                const newFT=activeBoost==='wildcard'?freeTransfers:Math.max(0,freeTransfers-Math.max(0,pendingTransfers.length-freeTransfers));
+                const newFT=activeBoost==='wildcard'?freeTransfers:Math.max(0,freeTransfers-pendingTransfers.length);
+                const hist={...(userData.fantasyHistory||{})};
+                const prevDed=(hist[String(currentMW)]||{}).transferDeduction||0;
+                hist[String(currentMW)]={...(hist[String(currentMW)]||{}),transferDeduction:prevDed+deduction};
                 let newSquad=[...squad];
                 pendingTransfers.forEach(({outId,inId})=>{newSquad=newSquad.map(id=>id===outId?inId:id);});
-                await onSaveFantasy({squad:newSquad,history:userData.fantasyHistory||{},freeTransfers:newFT,boostsAvailable:boosts});
+                await onSaveFantasy({squad:newSquad,history:hist,freeTransfers:newFT,boostsAvailable:boosts});
                 setSaving(false);
                 setPendingTransfers([]);
                 setTransferOut(null);
