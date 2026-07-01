@@ -677,10 +677,12 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
   const pickingRemaining=BUDGET-pickingSpent;
   const squadComplete=Object.entries(REQUIRED).every(([pos,req])=>pickCounts[pos]===req);
 
+  const teamPickCounts=picking.reduce((m,id)=>{const pl=allPlayers.find(p=>p.id===id);if(pl)m[pl.teamId]=(m[pl.teamId]||0)+1;return m;},{});
   const togglePick=p=>{
     if(picking.includes(p.id)){setPicking(prev=>prev.filter(id=>id!==p.id));return;}
     if((pickCounts[p.position]||0)>=REQUIRED[p.position])return;
     if(p.cost>pickingRemaining)return;
+    if((teamPickCounts[p.teamId]||0)>=3)return;
     setPicking(prev=>[...prev,p.id]);
   };
 
@@ -790,6 +792,7 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
     });
     const addToSlot=p=>{
       if(picking.includes(p.id)||p.cost>pickingRemaining)return;
+      if((teamPickCounts[p.teamId]||0)>=3)return;
       setPicking(prev=>[...prev,p.id]);
       setPickingSlot(null);
     };
@@ -867,10 +870,12 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
               ?<div style={{color:C.muted,fontSize:12,textAlign:"center",padding:"12px 0"}}>All {pickerPos}s already selected</div>
               :pickerOptions.map(p=>{
                 const cantAfford=p.cost>pickingRemaining;
+                const teamFull=(teamPickCounts[p.teamId]||0)>=3;
+                const disabled=cantAfford||teamFull;
                 return(
-                  <button key={p.id} onClick={()=>addToSlot(p)} disabled={cantAfford} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",marginBottom:6,cursor:cantAfford?'not-allowed':'pointer',opacity:cantAfford?0.38:1,textAlign:"left"}}>
+                  <button key={p.id} onClick={()=>addToSlot(p)} disabled={disabled} style={{display:"flex",alignItems:"center",gap:10,width:"100%",background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:"9px 12px",marginBottom:6,cursor:disabled?'not-allowed':'pointer',opacity:disabled?0.38:1,textAlign:"left"}}>
                     <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{p.name}</span>
-                    <span style={{fontSize:10,color:C.muted}}>{p.teamName}</span>
+                    <span style={{fontSize:10,color:C.muted}}>{teamFull?`${p.teamName} (max 3)`:p.teamName}</span>
                     <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:C.gold}}>{p.cost}</span>
                   </button>
                 );
@@ -1029,7 +1034,8 @@ function FantasyTab({teams,fixtures,userData,settings=DEFAULT_SETTINGS,onSaveFan
             pendingTransfers.forEach(t=>{effectiveSquad.delete(t.outId);effectiveSquad.add(t.inId);});
             const budgetUsed=allPlayers.filter(p=>effectiveSquad.has(p.id)).reduce((s,p)=>s+p.cost,0);
             const budgetLeft=BUDGET-budgetUsed+(outPlayer?.cost||0);
-            const available=allPlayers.filter(p=>!effectiveSquad.has(p.id)&&p.id!==transferOut&&p.position===outPlayer?.position&&p.cost<=budgetLeft).sort((a,b)=>b.cost-a.cost);
+            const effectiveTeamCounts=allPlayers.filter(p=>effectiveSquad.has(p.id)&&p.id!==transferOut).reduce((m,p)=>{m[p.teamId]=(m[p.teamId]||0)+1;return m;},{});
+            const available=allPlayers.filter(p=>!effectiveSquad.has(p.id)&&p.id!==transferOut&&p.position===outPlayer?.position&&p.cost<=budgetLeft&&(effectiveTeamCounts[p.teamId]||0)<3).sort((a,b)=>b.cost-a.cost);
             return(
               <>
                 <div style={{background:C.red+'22',border:`1px solid ${C.red}`,borderRadius:10,padding:"12px 14px",marginBottom:16}}>
